@@ -25,7 +25,8 @@ Docstrings are available, markdown documentation coming soon.
 
 ### Events
 - Data writing methods for final state particles:
-  - `pmu()`: 4-momentum, each row `[px, py, pz, e]`
+  - `pmu()`: 4-momentum, 2d `numpy` array, each row `[px, py, pz, e]` for a
+    single particle
   - `pdg()`: pdgids
   - `is_signal()`: boolean tags identifying if particle constituent of signal
   - `custom()`: extend with your own key / value dataset pair for the event
