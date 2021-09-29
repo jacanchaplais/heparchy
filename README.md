@@ -8,7 +8,7 @@ Docstrings are available, markdown documentation coming soon.
 - Writes and reads from HDF5 files
 - Data stored hierarchically
   - Files contain processes
-  - Process contain events
+  - Processes contain events
   - Events contain datasets for the final state particles
 - Process level metadata can be attached
 - Context managers provide access to these containers
