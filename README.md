@@ -39,5 +39,8 @@ pip install git+https://github.com/jacanchaplais/heparchy.git#egg=heparchy
 - [ ] Direct interface from LHE and HepMC files to HDF5 format
 - [X] Jupyter notebook examples
 - [X] Pip installation script
-- [ ] Warning: before the first release, the read interface may change
-      to improve consistency with the write interface
+
+Warning: before the first release, the read interface may change
+to improve consistency with the write interface.
+
+Breaking changes will be avoided following the iminent release of 1.0.0.
