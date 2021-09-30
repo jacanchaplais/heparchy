@@ -3,7 +3,10 @@ Hierarchical database storage and access for high energy physics event data.
 
 Docstrings are available, markdown documentation coming soon.
 
-## Features
+## Installation
+`pip install git+https://github.com/jacanchaplais/heparchy.git#egg=heparchy`
+
+# Features
 - Fast and efficient storage
 - Writes and reads from HDF5 files
 - Data stored hierarchically
@@ -30,7 +33,7 @@ Docstrings are available, markdown documentation coming soon.
   - `is_signal()`: boolean tags identifying if particle constituent of signal
   - `custom()`: extend with your own key / value dataset pair for the event
 
-## Coming soon
+# Coming soon
 - [ ] Direct interface from LHE and HepMC files to HDF5 format
 - [X] Jupyter notebook examples
 - [X] Pip installation script
