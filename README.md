@@ -4,7 +4,9 @@ Hierarchical database storage and access for high energy physics event data.
 Docstrings are available, markdown documentation coming soon.
 
 ## Installation
-`pip install git+https://github.com/jacanchaplais/heparchy.git#egg=heparchy`
+```
+pip install git+https://github.com/jacanchaplais/heparchy.git#egg=heparchy
+```
 
 # Features
 - Fast and efficient storage
