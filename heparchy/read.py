@@ -76,9 +76,9 @@ class EventLoader:
         return ids
 
     def get_unit(self):
-        return self._meta['unit']
+        return self._meta['e_unit']
 
-    def get_com(self, key='com_energy'):
+    def get_com(self, key='com_e'):
         return float(self._meta[key])
 
     # event level interface
