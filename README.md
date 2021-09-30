@@ -32,5 +32,5 @@ Docstrings are available, markdown documentation coming soon.
 
 ## Coming soon
 - [ ] Direct interface from LHE and HepMC files to HDF5 format
-- [ ] Jupyter notebook examples
+- [X] Jupyter notebook examples
 - [X] Pip installation script
