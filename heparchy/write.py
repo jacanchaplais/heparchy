@@ -1,5 +1,8 @@
 import h5py
 
+from heparchy import TYPE, PMU_DTYPE
+
+
 class DataWriter:
     """Class provides nested context managers for handling writing
     particle data for hierarchical access.
@@ -193,8 +196,8 @@ class DataWriter:
                 self.__mk_dset(
                         name='pmu',
                         data=data,
-                        shape=(self.num_pcls, 4),
-                        dtype='<f'
+                        shape=data.shape,
+                        dtype=PMU_DTYPE,
                         )
 
             def pdg(self, data) -> None:
@@ -210,11 +213,11 @@ class DataWriter:
                         name='pdg',
                         data=data,
                         shape=(self.num_pcls,),
-                        dtype='<i4',
+                        dtype=TYPE['int'],
                         )
             
-            def is_signal(self, data) -> None:
-                """Write bool signal marker for all particles to event.
+            def mask(self, name: str, data) -> None:
+                """Write bool mask for all particles in event.
                 
                 Keyword arguments:
                     data (python iterable or 1d numpy array): 1d
@@ -222,13 +225,18 @@ class DataWriter:
                         Contains True / False values for every particle
                         in event.
                         Note: would also accept int iterable of 0s / 1s.
+
+                Example use cases:
+                    - identify particles from specific parent
+                    - provide mask for rapidity and pT cuts
+                    - if storing whole shower, identify final state
                 """
                 self.__set_num_pcls(data)
                 self.__mk_dset(
-                        name='is_signal',
+                        name=name,
                         data=data,
                         shape=(self.num_pcls,),
-                        dtype='<?',
+                        dtype=TYPE['bool'],
                         )
 
             def custom_dataset(self, name: str, data, dtype) -> None:

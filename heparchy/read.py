@@ -28,18 +28,6 @@ class EventLoader:
     def __exit__(self, exc_type, exc_value, exc_traceback):
         self.__buffer.close()
 
-    # # process level interface
-    # def __fmt_pdg_meta(self, key):
-    #     meta = self._meta[key]
-    #     str_to_set = lambda s: set(int(pdg) for pdg in s.split('|'))
-    #     if isinstance(meta, str):
-    #         return str_to_set(meta)
-    #     else:
-    #         pdg_ids = list()
-    #         for pdg_str in meta:
-    #             pdg_ids.append(str_to_set(pdg_str))
-    #     return pdg_ids
-
     def get_ue_pcls(self, key, strict=True):
         """Returns the pdg(s) of the particles in the underlying event.
         Keyword arguments:
@@ -83,9 +71,6 @@ class EventLoader:
 
     # event level interface
     def get_pmu(self, key='pmu'):
-        return self.__grp[key][...]
-
-    def get_signal(self, key='is_signal'):
         return self.__grp[key][...]
 
     def get_pdg(self):
