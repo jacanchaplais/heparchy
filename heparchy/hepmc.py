@@ -3,8 +3,8 @@ from itertools import chain
 
 import numpy as np
 
-from heparchy import TYPE, PMU_DTYPE
-from heparchy.data import EventDataset
+from heparchy import TYPE, PMU_DTYPE, REAL_TYPE
+from heparchy.data import ShowerData
 from heparchy.utils import structure_pmu
 
 class HepMC:
@@ -14,9 +14,9 @@ class HepMC:
 
     def __init__(self, path, signal_vertices=None):
         self.path = path
-        self.data = EventDataset(
+        self.data = ShowerData(
                 edges = np.array([[0, 1]], dtype=TYPE['int']),
-                pmu=np.array([[0.0, 0.0, 0.0, 0.0]], dtype=TYPE['float']),
+                pmu=np.array([[0.0, 0.0, 0.0, 0.0]], dtype=REAL_TYPE),
                 pdg=np.array([1], dtype=TYPE['int']),
                 final=np.array([False], dtype=TYPE['bool'])
                 )
@@ -68,7 +68,7 @@ class HepMC:
         edges, pmus, pdgs, statuses = zip(*map(pcl_data, pcls))
         edges = np.fromiter(chain.from_iterable(edges), dtype=TYPE['int'])
         edges = edges.reshape((-1, 2))
-        pmu = np.array(list(pmus), dtype=TYPE['float'])
+        pmu = np.array(list(pmus), dtype=REAL_TYPE)
         pmu = structure_pmu(pmu)
         pdg = np.fromiter(pdgs, dtype=TYPE['int'])
         is_leaf = np.fromiter(

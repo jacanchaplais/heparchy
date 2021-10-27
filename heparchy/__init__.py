@@ -11,14 +11,20 @@ TYPE = {
     'd_int': '<i8',
     }
 
+# default type for floating point numbers set to double
+REAL_TYPE = TYPE['double']
+
 PMU_DTYPE = [
-        ("x", TYPE['float']),
-        ("y", TYPE['float']),
-        ("z", TYPE['float']),
-        ("e", TYPE['float'])
+        ("x", REAL_TYPE),
+        ("y", REAL_TYPE),
+        ("z", REAL_TYPE),
+        ("e", REAL_TYPE)
         ]
 
 EDGE_DTYPE = [
         ("in", TYPE['int']),
         ("out", TYPE['int']),
         ]
+
+
+event_key_format = lambda evt_num: f'event_{evt_num:09}'

@@ -4,9 +4,41 @@ from functools import wraps
 import attr
 import numpy as np
 
-from heparchy.utils import structure_edges
-from heparchy import TYPE
+import heparchy.utils as utils
+from heparchy import TYPE, REAL_TYPE
 
+
+# @attr.s
+# class FourMomentum:
+#     pmu: np.ndarray = attr.ib(
+#             converter=utils.structure_pmu,
+#             eq=attr.cmp_using(eq=np.array_equal),
+#             )
+
+#     @classmethod
+#     def from_components(cls,
+#                         x: np.ndarray, y: np.ndarray,
+#                         z: np.ndarray, e: np.ndarray):
+#         struc_pmu = utils.structure_pmu_components(x, y, z, e)
+#         return cls(struc_pmu)
+
+#     @property
+#     def strip_names(self):
+#         return utils.unstructure_pmu(self.pmu, dtype=REAL_TYPE)
+
+#     @property
+#     def mag(self):
+#         pmu2 = self.strip_names(self.pmu) ** 2
+#         return np.sqrt(np.sum(pmu2, axis=0))
+
+#     @property
+#     def pt(self):
+#         return np.sqrt(self.pmu['x']**2 + self.pmu['y']**2)
+
+#     @propety
+#     def eta(self):
+#         return np.arctanh(self.pmu['z'] / self.mag(self.pmu), axis=0)
+            
 
 def val_elems_int(instance, attribute, value):
     all_ints = set(map(type, value)) == {int} # True if elems all ints
@@ -39,23 +71,71 @@ class SignalVertex:
     outgoing: __PdgSet = attr.ib(**__pdg_kwargs)
     follow: __PdgSet = attr.ib(**__pdg_kwargs)
 
+# @attr.s
+# class ParticleSet:
+#     pmu: np.ndarray = attr.ib(
+#             **__array_kwargs)
+#     pdg: np.ndarray = attr.ib(
+#             **__array_kwargs)
+#     __pmu_vector = self.__vector_view()
+
+#     def __vector_view(self):
+#         dtype = deepcopy(self.pmu.dtype)
+#         dtype.names = ('x', 'y', 'z', 't')
+#         pmu_vec = self.pmu.view(dtype).view(self.__vector.MomentumNumpy4D)
+#         return pmu_vec
+
+#     @property
+#     def pt(self):
+#         return self.__pmu_vector.pt
+
+#     @property
+#     def eta(self):
+#         return self.__pmu_vector.eta
+
 @attr.s(on_setattr=attr.setters.convert)
 class ShowerData:
     import pandas as __pd
     import networkx as __nx
+    import vector as __vector
 
     __array_kwargs = dict(
             eq=attr.cmp_using(eq=np.array_equal),
             )
     edges: np.ndarray = attr.ib(
-            converter=structure_edges,
+            converter=utils.structure_edges,
             **__array_kwargs)
     pmu: np.ndarray = attr.ib(
+            converter=utils.structure_pmu,
             **__array_kwargs)
     pdg: np.ndarray = attr.ib(
             **__array_kwargs)
     final: np.ndarray = attr.ib(
             **__array_kwargs)
+
+    def __attrs_post_init__(self):
+        self.__pmu_vector = self.__vector_view()
+
+    def __vector_view(self):
+        dtype = deepcopy(self.pmu.dtype)
+        dtype.names = ('x', 'y', 'z', 't')
+        pmu_vec = self.pmu.view(dtype).view(self.__vector.MomentumNumpy4D)
+        return pmu_vec
+
+    def __mask_vector(self, mask):
+        return self.__pmu_vector[mask].squeeze()
+
+    def pt(self, mask=None):
+        pmu_subset = self.__mask_vector(mask)
+        return pmu_subset.pt
+
+    def eta(self, mask=None):
+        pmu_subset = self.__mask_vector(mask)
+        return pmu_subset.eta
+
+    def phi(self, mask=None):
+        pmu_subset = self.__mask_vector(mask)
+        return pmu_subset.phi
 
     def flush_cache(self):
         """Clears cached private attributes of ShowerData instance.
@@ -92,7 +172,7 @@ class ShowerData:
             Specify which of the particle properties should be embedded
             on the edges.
             Valid options are:
-                - pdg (default)
+                - pdg [default]
                 - pmu
                 - final
         """
@@ -123,11 +203,16 @@ class ShowerData:
         ----------
         data : iterable of strings or True
             The particle properties to include as columns.
-            Options include edges, pdg, pmu, final (boolean mask).
-            Can also specify edge_in or edge_out separately, and
-            individual components of momenta, ie. x, y, z, or e.
-            If set to True instead of an iterable, all data is included.
-            Default: ('pdg', 'final')
+            Valid options are:
+                - pdg [default]
+                - final [default]
+                - pmu
+                - x, y, z, or e
+                - edges
+                - pt
+                - eta
+                - phi
+            If set to True instead of iterable, all data are included.
 
         Notes
         -----
@@ -141,6 +226,9 @@ class ShowerData:
             'final': self.final,
             'edge_in': self.edges['in'],
             'edge_out': self.edges['out'],
+            'pt': self.pt(),
+            'eta': self.eta(),
+            'phi': self.phi(),
             }
         pmu_cols = list(self.pmu.dtype.names)
         cols.update({col_name: self.pmu[col_name] for col_name in pmu_cols})
@@ -250,7 +338,7 @@ class ShowerData:
                     desc_vtxs = self.__nx.descendants(self.__shower, follow_id)
                     # convert into structured np array for set comparison
                     desc_edges = list(self.__shower.edges(nbunch=desc_vtxs))
-                    desc_edges = structure_edges(np.array(desc_edges))
+                    desc_edges = utils.structure_edges(np.array(desc_edges))
                     # create mask identifying edges / pcls desc from signal
                     mask = np.isin(self.edges, desc_edges, assume_unique=True)
                     follow_masks.update({follow_pdg: mask}) # store to dict
@@ -266,3 +354,4 @@ class ShowerData:
         in memory.
         """
         return deepcopy(self)
+

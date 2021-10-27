@@ -1,91 +1,127 @@
-import h5py
+from functools import wraps
+from copy import deepcopy
 from os.path import basename
 
-class EventLoader:
-    def __init__(self, path, key):
+import numpy as np
+import h5py
+
+from heparchy import event_key_format
+
+
+class HepReader:
+    def __init__(self, path):
         self.path = path
-        self.key = key
-        self.__evt_iter = None
-        self.__grp = None
 
     def __enter__(self):
-        self.__buffer = h5py.File(self.path, 'r')
-        self._meta = dict(self.__buffer[self.key].attrs)
-        return self
-
-    def __iter__(self):
-        self.__evt_iter = iter(self.__buffer[self.key])
-        return self
-
-    def __next__(self):
-        grp_key = next(self.__evt_iter)
-        self.__grp = self.__buffer[self.key][grp_key]
+        self._buffer = h5py.File(self.path, 'r')
         return self
 
     def __len__(self):
-        return self.__buffer[self.key].attrs['num_evts']
+        return self._buffer[self.key].attrs['num_evts']
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
-        self.__buffer.close()
+        self._buffer.close()
 
-    def get_ue_pcls(self, key, strict=True):
-        """Returns the pdg(s) of the particles in the underlying event.
-        Keyword arguments:
-            key (str) -- possible values:
-                - in_pcls:
-                      the incoming particles, eg. p p, or e+ e-
-                - out_pcls:
-                      the (final) outgoing particles
-                - signal_pcl:
-                      the outgoing particle generating the signal jet
-            strict (bool) -- if set to False, will return NoneType
-                and issue a warning when data not found, instead of
-                throwing an error
-        Output:
-            pcls (list of ints)
-        """
-        try:
-            ids = self._meta[key]
-        except KeyError:
-            msg = f"Metadata with key {key} not found in {self.path}."
-            if strict:
-                print(msg)
-                print("Aborting!")
-                raise
-            else:
-                print(msg)
-                print("Returning NoneType.")
-                return None
+    def read_process(self, name: str):
+        return self.ProcessReader(self._buffer, key=name)
 
-        if hasattr(ids, '__iter__'):
-            ids = [int(i) for i in ids]
-        else:
-            ids = int(ids)
-        return ids
+    class ProcessReader:
+        def __init__(self, file_obj, key: str):
+            self.__buffer = file_obj
+            self.key = key
+            self.__evt = self.__EventReader(evt_data=(None, None))
 
-    def get_unit(self):
-        return self._meta['e_unit']
+        def __enter__(self):
+            self.__proc_grp = self.__buffer[self.key]
+            self._meta = dict(self.__buffer[self.key].attrs)
+            return self
 
-    def get_com(self, key='com_e'):
-        return float(self._meta[key])
+        def __exit__(self, exc_type, exc_value, exc_traceback):
+            pass
 
-    # event level interface
-    def get_pmu(self, key='pmu'):
-        return self.__grp[key][...]
+        def __iter__(self):
+            def iter_evts():
+                for evt_data in self.__proc_grp.items():
+                    self.__evt._name, self.__evt._grp = evt_data
+                    yield self.__evt
+            self.__iter = iter_evts()
+            return self
 
-    def get_pdg(self):
-        return self.__grp['pdg'][...]
+        def __next__(self):
+            return next(self.__iter)
 
-    def get_custom(self, key):
-        return self.__grp[key][...]
+        def __len__(self):
+            return int(self._meta['num_evts'])
 
-    def get_num_pcls(self, key='num_pcls'):
-        return self.__grp.attrs[key]
+        @property
+        def string(self) -> str:
+            return self._meta['process']
 
-    def get_evt_name(self):
-        return basename(self.__grp.name)
+        @property
+        def decay(self) -> dict:
+            return {
+                'in_pcls': self._meta['in_pcls'],
+                'out_pcls': self._meta['out_pcls'],
+                }
 
-    def set_evt(self, evt_num):
-        self.__evt_iter = None
-        grp_key = f'event_{evt_num:09}'
-        self.__grp = self.__buffer[self.key][grp_key]
+        @property
+        def com_energy(self) -> dict:
+            return {
+                'energy': self._meta['com_e'],
+                'unit': self._meta['e_unit'],
+                }
+
+        # @property
+        # def signal_id(self) -> int:
+        #     return int(self._meta['signal_pcl'])
+
+        def get_custom(self, name: str):
+            return self._meta[name]
+        
+        def read_event(self, evt_num):
+            evt_name = event_key_format(evt_num)
+            self.__evt._name = evt_name
+            self.__evt._grp = self.__proc_grp[evt_name]
+            return self.__evt
+
+        class __EventReader:
+            __slots__ = ('_name', '_grp')
+
+            def __init__(self, evt_data):
+                self._name = evt_data[0]
+                self._grp = evt_data[1]
+
+            @property
+            def name(self) -> str:
+                return str(basename(self._name))
+
+            @property
+            def count(self) -> int:
+                return int(self._grp.attrs['num_pcls'])
+
+            @property
+            def edges(self) -> np.ndarray:
+                return self._grp['edges'][...]
+
+            @property
+            def pmu(self) -> np.ndarray:
+                return self._grp['pmu'][...]
+
+            @property
+            def pdg(self) -> np.ndarray:
+                return self._grp['pdg'][...]
+
+            @property
+            def available(self) -> list:
+                dataset_names = list()
+                self._grp.visit(lambda name: dataset_names.append(name))
+                return dataset_names
+
+            def mask(self, name: str) -> np.ndarray:
+                return self._grp[name][...]
+
+            def get_custom(self, name: str):
+                return self._grp[name][...]
+
+            def copy(self):
+                return deepcopy(self)

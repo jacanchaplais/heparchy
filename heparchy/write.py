@@ -1,12 +1,12 @@
 import h5py
 
-from heparchy import TYPE, PMU_DTYPE
+from heparchy import TYPE, PMU_DTYPE, EDGE_DTYPE, event_key_format
 
 
-class DataWriter:
+class HepWriter:
     """Class provides nested context managers for handling writing
     particle data for hierarchical access.
-    
+
     The outer context manager (instantiated by this class) constructs
     and prepares the file for writing.
 
@@ -27,11 +27,11 @@ class DataWriter:
     Repeatedly opening this context writes successive events under
     the same process.
 
-    Keyword arguments:
-        path (str): filepath for output.
-            Note: currently only support .h5 and .hdf5 extensions.
-
-    See `notebooks/conversion.ipynb` for example usage.
+    Parameters
+    ----------
+    path : str
+        Filepath for output.
+        Note: currently only support .h5 and .hdf5 extensions.
     """
     def __init__(self, path: str):
         self.path = path
@@ -43,7 +43,7 @@ class DataWriter:
     def __exit__(self, exc_type, exc_value, exc_traceback):
         self._buffer.close()
 
-    def new_process(self, key: str):
+    def write_process(self, name: str):
         """Returns a context handler object for storage of data in
         a given hard process.
 
@@ -51,11 +51,13 @@ class DataWriter:
         calling the `new_event()` method, which itself returns a context
         handler object.
 
-        Keyword arguments:
-            key (str): arbitrary name, used to look up data with reader
+        Parameters
+        ----------
+        key : str
+            Arbitrary name, used to look up data with reader.
 
         """
-        return self.ProcessHandler(self, key)
+        return self.ProcessHandler(self, key=name)
 
     class ProcessHandler:
         def __init__(self, file_obj, key: str):
@@ -75,9 +77,11 @@ class DataWriter:
             """Writes the string formatted underlying event to the
             process metadata.
             
-            Keyword arguments:
-                proc_str (str): MadGraph formatted string representing
-                the hard event, eg. p p > t t~
+            Parameters
+            ----------
+            proc_str : str
+                MadGraph formatted string representing the hard event,
+                eg. p p > t t~
             """
             self._grp.attrs['process'] = proc_str
 
@@ -85,11 +89,14 @@ class DataWriter:
             """Writes the pdgids of incoming and outgoing particles to
             process metadata.
 
-            Keyword arguments:
-                in_pcls (tuple of ints): pdgids of incoming particles,
-                    eg. for p p => (2212, 2212)
-                out_pcls (tuple of ints): pdgids of outgoing particles,
-                    eg. for t t~ => (6, -6)
+            Parameters
+            ----------
+            in_pcls : tuple of ints
+                pdgids of incoming particles.
+                eg. for p p => (2212, 2212)
+            out_pcls : tuple of ints
+                pdgids of outgoing particles.
+                eg. for t t~ => (6, -6)
             """
             self._grp.attrs['in_pcls'] = in_pcls
             self._grp.attrs['out_pcls'] = out_pcls
@@ -98,31 +105,37 @@ class DataWriter:
             """Writes the CoM energy and unit for the collision to
             process metadata.
 
-            Keyword arguments:
-                energy (float): eg. 13.0
-                out_pcls (str): eg. 'GeV'
+            Parameters
+            ----------
+            energy : float
+                eg. 13.0
+            out_pcls : str
+                eg. 'GeV'
             """
             self._grp.attrs['com_e'] = energy
             self._grp.attrs['e_unit'] = unit
 
-        def signal_id(self, signal_pcl: int) -> None:
-            """Writes the pdgid of the signal particle, from the hard
-            event, to process metadata.
+        # def signal_id(self, signal_pcl: int) -> None:
+        #     """Writes the pdgid of the signal particle, from the hard
+        #     event, to process metadata.
 
-            Keyword arguments:
-                signal_pcl (int): pdgid for particle of interest from
-                    hard event products
+        #     Keyword arguments:
+        #         signal_pcl (int): pdgid for particle of interest from
+        #             hard event products
 
-            eg. if you're tagging / clustering tops, use `signal_id(6)`.
-            """
-            self._grp.attrs['signal_pcl'] = signal_pcl
+        #     eg. if you're tagging / clustering tops, use `signal_id(6)`.
+        #     """
+        #     self._grp.attrs['signal_pcl'] = signal_pcl
 
         def custom(self, name: str, metadata) -> None:
             """Store custom metadata to the process.
 
-            Keyword arguments:
-                name (str): handle to access the metadata at read time.
-                metadata: str, int, float, or iterables thereof.
+            Parameters
+            ----------
+            name : str
+                Handle to access the metadata at read time.
+            metadata : str, int, float, or iterables thereof
+                The data you wish to store.
             """
             self._grp.attrs[name] = metadata
 
@@ -137,8 +150,7 @@ class DataWriter:
 
             def __enter__(self):
                 self.__evt = self.__grp_obj._grp.create_group(
-                        f'event_{self._idx:09}'
-                        )
+                        event_key_format(self._idx))
                 return self
 
             def __exit__(self, exc_type, exc_value, exc_traceback):
@@ -184,13 +196,23 @@ class DataWriter:
                         )
                 dset[...] = data
 
+            def edges(self, data) -> None:
+                self.__set_num_pcls(data)
+                self.__mk_dset(
+                        name='edges',
+                        data=data,
+                        shape=data.shape,
+                        dtype=EDGE_DTYPE,
+                        )
+
             def pmu(self, data) -> None:
                 """Write 4-momentum for all particles to event.
                 
-                Keyword arguments:
-                    data ((num_pcls, 4) numpy array): 2d array of floats.
-                        Each row contains momentum of one
-                        particle, in order [px, py, pz, e].
+                Parameters
+                ----------
+                data : 2d array of floats.
+                    Each row contains momentum of one particle,
+                    in order [px, py, pz, e].
                 """
                 self.__set_num_pcls(data)
                 self.__mk_dset(
@@ -203,10 +225,11 @@ class DataWriter:
             def pdg(self, data) -> None:
                 """Write pdg codes for all particles to event.
                 
-                Keyword arguments:
-                    data (python iterable or 1d numpy array): 1d
-                        iterable of ints.
-                        Contains pdg codes for every particle in event.
+                Parameters
+                ----------
+                data : iterable or 1d numpy array
+                    Iterable of ints containing pdg codes for every
+                    particle in the event.
                 """
                 self.__set_num_pcls(data)
                 self.__mk_dset(
@@ -219,13 +242,15 @@ class DataWriter:
             def mask(self, name: str, data) -> None:
                 """Write bool mask for all particles in event.
                 
-                Keyword arguments:
-                    data (python iterable or 1d numpy array): 1d
-                        iterable of bools.
-                        Contains True / False values for every particle
-                        in event.
-                        Note: would also accept int iterable of 0s / 1s.
+                Parameters
+                ----------
+                data : iterable or 1d numpy array
+                    Iterable of bools containing True / False values for
+                    every particle in event.
+                    Note: would also accept int iterable of 0s / 1s.
 
+                Notes
+                -----
                 Example use cases:
                     - identify particles from specific parent
                     - provide mask for rapidity and pT cuts
@@ -242,11 +267,16 @@ class DataWriter:
             def custom_dataset(self, name: str, data, dtype) -> None:
                 """Write a custom dataset to the event.
 
-                Keyword arguments:
-                    name (str): handle used when reading the data.
-                    data (nd numpy array): data to store.
-                    dtype: data type;
-                        Note: using little Endian for builtin datasets.
+                Parameters
+                ----------
+                name : str
+                    Handle used when reading the data.
+                data : nd numpy array
+                    data to store.
+                dtype : valid string, numpy, or python data type
+                    Type in which your data should be encoded for
+                    storage.
+                    Note: using little Endian for builtin datasets.
                 """
                 self.__set_num_pcls(data)
                 self.__mk_dset(
