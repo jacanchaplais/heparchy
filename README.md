@@ -36,7 +36,7 @@ pip install git+https://github.com/jacanchaplais/heparchy.git#egg=heparchy
   - `custom()`: extend with your own key / value dataset pair for the event
 
 # Coming soon
-- [ ] Direct interface from LHE and HepMC files to HDF5 format
+- [X] Direct interface from HepMC files to HDF5 format
 - [X] Jupyter notebook examples
 - [X] Pip installation script
 
