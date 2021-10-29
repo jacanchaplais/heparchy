@@ -1,3 +1,6 @@
+import tempfile
+import gzip
+import shutil
 import warnings
 from itertools import chain
 
@@ -7,37 +10,77 @@ from heparchy import TYPE, PMU_DTYPE, REAL_TYPE
 from heparchy.data import ShowerData
 from heparchy.utils import structure_pmu
 
+
 class HepMC:
+    """Returns an iterator over events in the given HepMC file.
+    Event data is provided as a `heparchy.data.ShowerData` object.
+
+    Parameters
+    ----------
+    path : string
+        Location of the HepMC file.
+        If this file is compressed with gzip, a temporary decompressed
+        file will be created and cleaned up within the scope of the
+        context manager.
+
+    See also
+    --------
+    `heparchy.data.ShowerData` : Container for Monte-Carlo shower data.
+
+    Examples
+    --------
+    >>> with HepMC('test.hepmc.gz') as hep_f:
+    ...     for event in hep_f:
+    ...         print(event.pmu)
+    [( 0.        ,  0.        ,  6.49999993e+03, 6.50000000e+03)
+     ( 1.42635177, -1.2172366 ,  1.36418624e+03, 1.36418753e+03)
+     ( 0.21473153, -0.31874408,  1.04370539e+01, 1.04441276e+01) ...
+     (-2.40079685,  1.56211274,  2.78633756e+00, 3.99596030e+00)
+     (-0.34612959,  0.37377605,  5.25064994e-01, 7.31578753e-01)
+     (-0.00765114,  0.00780012, -8.58527843e-03, 1.38956379e-02)]
+    [( ...
+
+    Notes
+    -----
+    If you wish to keep a given event in memory, you must use
+    `ShowerData`'s `copy()` method.
+    This is because the `HepMC` iterator avoids the substantial cost of
+    repeated object instantiation by re-using a single `ShowerData`
+    instance, with its efficient setter methods to update the data it
+    contains.
+    """
+
     import pyhepmc_ng as __hepmc
     import networkx as __nx
 
 
-    def __init__(self, path, signal_vertices=None):
+    def __init__(self, path):
         self.path = path
+        self.__gunz_f = None
         self.data = ShowerData(
                 edges = np.array([[0, 1]], dtype=TYPE['int']),
                 pmu=np.array([[0.0, 0.0, 0.0, 0.0]], dtype=REAL_TYPE),
                 pdg=np.array([1], dtype=TYPE['int']),
                 final=np.array([False], dtype=TYPE['bool'])
                 )
-        # self.__signal_dicts = signal_vertices
-        # if signal_vertices is not None:
-        #     self.__signal_empty_msgs = [
-        #             "At least one event does not contain signal vertex {"
-        #             + f"in: {vtx['in']}, out: {vtx['out']}"
-        #             + "}."
-        #             for vtx in self.__signal_dicts
-        #             ]
-        #     for msg in self.__signal_empty_msgs:
-        #         warnings.filterwarnings('once', message=msg)
 
     # context manager
     def __enter__(self):
-        self.__buffer = self.__hepmc.open(self.path, 'r')
+        try:
+            self.__buffer = self.__hepmc.open(self.path, 'r')
+        except UnicodeDecodeError:
+            self.__gunz_f = tempfile.NamedTemporaryFile()
+            with gzip.open(self.path, 'rb') as gz_f:
+                shutil.copyfileobj(gz_f, self.__gunz_f)
+            self.__buffer = self.__hepmc.open(self.__gunz_f.name, 'r')
+        except:
+            raise
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
         self.__buffer.close()
+        if self.__gunz_f is not None:
+            self.__gunz_f.close()
 
     # iterable
     def __iter__(self):
@@ -53,7 +96,7 @@ class HepMC:
          self.data.pmu,
          self.data.pdg,
          self.data.final) = self.__pcl_data()
-        return self
+        return self.data
 
     def __pcl_data(self):
         pcls = self.__content.particles
@@ -74,17 +117,3 @@ class HepMC:
         is_leaf = np.fromiter(
                 map(lambda status: status == 1, statuses), dtype=TYPE['bool'])
         return edges, pmu, pdg, is_leaf
-
-    # @property
-    # def neutrino_filter(self):
-    #     abs_pdg = np.abs(self.__pdg) # treat matter and antimatter as the same
-    #     nu_pdg = (12, 14, 16) # e, mu, tau
-    #     return np.bitwise_and.reduce([abs_pdg != nu for nu in nu_pdg])
-
-    # def eta_filter(self, abs_limit=2.5):
-    #     return np.abs(self.__pmu.eta) < abs_limit
-
-    # def pt_filter(self, low=0.5, high=np.inf):
-    #     pt = self.__pmu.pt
-    #     return np.bitwise_and(pt >= low, pt <= high)
-
