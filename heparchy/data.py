@@ -340,7 +340,7 @@ class ShowerData:
                     desc_edges = list(self.__shower.edges(nbunch=desc_vtxs))
                     desc_edges = utils.structure_edges(np.array(desc_edges))
                     # create mask identifying edges / pcls desc from signal
-                    mask = np.isin(self.edges, desc_edges, assume_unique=True)
+                    mask = np.isin(self.edges, desc_edges, assume_unique=False)
                     follow_masks.update({follow_pdg: mask}) # store to dict
             else: # if vertex not located, fill with all False masks
                 mask = np.full_like(self.final, fill_value=False)
