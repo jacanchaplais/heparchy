@@ -42,8 +42,11 @@ from heparchy import TYPE, REAL_TYPE
 
 def val_elems_int(instance, attribute, value):
     all_ints = set(map(type, value)) == {int} # True if elems all ints
-    if not all_ints:
-        raise TypeError("Inputs must be iterables of integers.")
+    empty = False
+    if not value:
+        empty = True
+    if not empty and not all_ints:
+        raise TypeError(f'Inputs must be iterables of integers. Got {value=}')
 
 def val_int_array(instance, attribute, value):
     pass
