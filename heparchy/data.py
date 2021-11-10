@@ -116,28 +116,23 @@ class ShowerData:
     final: np.ndarray = attr.ib(
             **__array_kwargs)
 
-    def __attrs_post_init__(self):
-        self.__pmu_vector = self.__vector_view()
-
-    def __vector_view(self):
+    @property
+    def __pmu_vector(self):
         dtype = deepcopy(self.pmu.dtype)
         dtype.names = ('x', 'y', 'z', 't')
         pmu_vec = self.pmu.view(dtype).view(self.__vector.MomentumNumpy4D)
         return pmu_vec
 
-    def __mask_vector(self, mask):
-        return self.__pmu_vector[mask].squeeze()
-
     def pt(self, mask=None):
-        pmu_subset = self.__mask_vector(mask)
+        pmu_subset = self.__pmu_vector[mask].squeeze()
         return pmu_subset.pt
 
     def eta(self, mask=None):
-        pmu_subset = self.__mask_vector(mask)
+        pmu_subset = self.__pmu_vector[mask].squeeze()
         return pmu_subset.eta
 
     def phi(self, mask=None):
-        pmu_subset = self.__mask_vector(mask)
+        pmu_subset = self.__pmu_vector[mask].squeeze()
         return pmu_subset.phi
 
     def flush_cache(self):
