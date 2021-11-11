@@ -46,7 +46,8 @@ def val_elems_int(instance, attribute, value):
     if not value:
         empty = True
     if not empty and not all_ints:
-        raise TypeError(f'Inputs must be iterables of integers. Got {value=}')
+        raise TypeError(
+                f'Inputs must be iterables of integers. Got value={value}')
 
 def val_int_array(instance, attribute, value):
     pass
