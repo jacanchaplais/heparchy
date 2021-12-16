@@ -57,13 +57,7 @@ class HepMC:
     def __init__(self, path):
         self.path = path
         self.__gunz_f = None
-        self.data = ShowerData(
-                edges = np.array([[0, 1]], dtype=TYPE['int']),
-                pmu=np.array([[0.0, 0.0, 0.0, 0.0]], dtype=REAL_TYPE),
-                pdg=np.array([1], dtype=TYPE['int']),
-                final=np.array([False], dtype=TYPE['bool'])
-                )
-
+        self.data = ShowerData.empty()
     # context manager
     def __enter__(self):
         try:

@@ -8,38 +8,6 @@ import heparchy.utils as utils
 from heparchy import TYPE, REAL_TYPE
 
 
-# @attr.s
-# class FourMomentum:
-#     pmu: np.ndarray = attr.ib(
-#             converter=utils.structure_pmu,
-#             eq=attr.cmp_using(eq=np.array_equal),
-#             )
-
-#     @classmethod
-#     def from_components(cls,
-#                         x: np.ndarray, y: np.ndarray,
-#                         z: np.ndarray, e: np.ndarray):
-#         struc_pmu = utils.structure_pmu_components(x, y, z, e)
-#         return cls(struc_pmu)
-
-#     @property
-#     def strip_names(self):
-#         return utils.unstructure_pmu(self.pmu, dtype=REAL_TYPE)
-
-#     @property
-#     def mag(self):
-#         pmu2 = self.strip_names(self.pmu) ** 2
-#         return np.sqrt(np.sum(pmu2, axis=0))
-
-#     @property
-#     def pt(self):
-#         return np.sqrt(self.pmu['x']**2 + self.pmu['y']**2)
-
-#     @propety
-#     def eta(self):
-#         return np.arctanh(self.pmu['z'] / self.mag(self.pmu), axis=0)
-            
-
 def val_elems_int(instance, attribute, value):
     all_ints = set(map(type, value)) == {int} # True if elems all ints
     empty = False
@@ -116,6 +84,15 @@ class ShowerData:
             **__array_kwargs)
     final: np.ndarray = attr.ib(
             **__array_kwargs)
+
+    @classmethod
+    def empty(cls):
+        return cls(
+            edges = np.array([[0, 1]], dtype=TYPE['int']),
+            pmu=np.array([[0.0, 0.0, 0.0, 0.0]], dtype=REAL_TYPE),
+            pdg=np.array([1], dtype=TYPE['int']),
+            final=np.array([False], dtype=TYPE['bool'])
+            )
 
     @property
     def __pmu_vector(self):
