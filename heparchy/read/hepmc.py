@@ -7,7 +7,7 @@ from itertools import chain
 import numpy as np
 
 from heparchy import TYPE, PMU_DTYPE, REAL_TYPE
-from heparchy.data import ShowerData
+from heparchy.data.event import ShowerData
 from heparchy.utils import structure_pmu
 
 

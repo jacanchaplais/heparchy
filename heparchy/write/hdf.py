@@ -4,137 +4,11 @@ import numpy as np
 import h5py
 
 from heparchy import TYPE, PMU_DTYPE, EDGE_DTYPE, event_key_format
-from _interface import StorageBase, ProcessBase, EventBase
+from ._interface import WriterBase, ProcessWriterBase, EventWriterBase
 
 
-class HdfWriter(StorageBase):
-    """Class provides nested context managers for handling writing
-    particle data for hierarchical access.
-
-    The outer context manager (instantiated by this class) constructs
-    and prepares the file for writing.
-
-    The next layer down, a process context manager can be instantiated
-    with the `new_process()` method. This acts as a container for
-    hadronised showers generated with the same underlying process.
-    It may be called repeatedly to store data from different processes
-    within the same file.
-    Optional methods are provided to write metadata to these containers,
-    describing the hard event.
-    The number of events written within this container is automatically
-    stored to the metadata.
-
-    The final layer is the event context manager, and can be
-    instantiated with the `new_event()` method.
-    This creates an event within the process container, and provides
-    methods for writing particle data to the event.
-    Repeatedly opening this context writes successive events under
-    the same process.
-
-    Parameters
-    ----------
-    path : str
-        Filepath for output.
-    """
-    def __init__(self, path: str):
-        self.path = path
-
-    def __enter__(self):
-        self._buffer = h5py.File(self.path, 'w', libver='latest')
-        return self
-
-    def __exit__(self, exc_type, exc_value, exc_traceback):
-        self._buffer.close()
-
-    def new_process(self, name: str) -> ProcessHandler:
-        """Returns a context handler object for storage of data in
-        a given hard process.
-
-        Events can be iteratively added to this process by repeatedly
-        calling the `new_event()` method, which itself returns a context
-        handler object.
-
-        Parameters
-        ----------
-        key : str
-            Arbitrary name, used to look up data with reader.
-
-        """
-        return ProcessHandler(self, key=name)
-
-class ProcessHandler(ProcessBase):
-    def __init__(self, file_obj: HdfWriter, key: str):
-        self.__file_obj = file_obj
-        self.key = key
-        self._evt_idx = 0
-
-    def __enter__(self):
-        self._grp = self.__file_obj._buffer.create_group(self.key)
-        return self
-
-    def __exit__(self, exc_type, exc_value, exc_traceback):
-        # count all of the events and write to attribute
-        self._grp.attrs['num_evts'] = self._evt_idx
-
-    def set_string(self, proc_str: str) -> None:
-        """Writes the string formatted underlying event to the
-        process metadata.
-        
-        Parameters
-        ----------
-        proc_str : str
-            MadGraph formatted string representing the hard event,
-            eg. p p > t t~
-        """
-        self._grp.attrs['process'] = proc_str
-
-    def set_decay(self, in_pcls: tuple, out_pcls: tuple) -> None:
-        """Writes the pdgids of incoming and outgoing particles to
-        process metadata.
-
-        Parameters
-        ----------
-        in_pcls : tuple of ints
-            pdgids of incoming particles.
-            eg. for p p => (2212, 2212)
-        out_pcls : tuple of ints
-            pdgids of outgoing particles.
-            eg. for t t~ => (6, -6)
-        """
-        self._grp.attrs['in_pcls'] = in_pcls
-        self._grp.attrs['out_pcls'] = out_pcls
-
-    def set_com_energy(self, energy: float, unit: str) -> None:
-        """Writes the CoM energy and unit for the collision to
-        process metadata.
-
-        Parameters
-        ----------
-        energy : float
-            eg. 13.0
-        out_pcls : str
-            eg. 'GeV'
-        """
-        self._grp.attrs['com_e'] = energy
-        self._grp.attrs['e_unit'] = unit
-
-    def set_custom_meta(self, name: str, metadata: Any) -> None:
-        """Store custom metadata to the process.
-
-        Parameters
-        ----------
-        name : str
-            Handle to access the metadata at read time.
-        metadata : str, int, float, or iterables thereof
-            The data you wish to store.
-        """
-        self._grp.attrs[name] = metadata
-
-    def new_event(self) -> EventHandler:
-        return EventHandler(self)
-
-class EventHandler(EventBase):
-    def __init__(self, grp_obj: ProcessHandler):
+class _EventWriter(EventWriterBase):
+    def __init__(self, grp_obj: ProcessWriterBase):
         self.__grp_obj = grp_obj # pointer to parent group obj
         self._idx = grp_obj._evt_idx # index for current event
         self.num_pcls = None
@@ -279,3 +153,129 @@ class EventHandler(EventBase):
                 shape=data.shape,
                 dtype=dtype,
                 )
+
+class _ProcessWriter(ProcessWriterBase):
+    def __init__(self, file_obj: WriterBase, key: str):
+        self.__file_obj = file_obj
+        self.key = key
+        self._evt_idx = 0
+
+    def __enter__(self):
+        self._grp = self.__file_obj._buffer.create_group(self.key)
+        return self
+
+    def __exit__(self, exc_type, exc_value, exc_traceback):
+        # count all of the events and write to attribute
+        self._grp.attrs['num_evts'] = self._evt_idx
+
+    def set_string(self, proc_str: str) -> None:
+        """Writes the string formatted underlying event to the
+        process metadata.
+        
+        Parameters
+        ----------
+        proc_str : str
+            MadGraph formatted string representing the hard event,
+            eg. p p > t t~
+        """
+        self._grp.attrs['process'] = proc_str
+
+    def set_decay(self, in_pcls: tuple, out_pcls: tuple) -> None:
+        """Writes the pdgids of incoming and outgoing particles to
+        process metadata.
+
+        Parameters
+        ----------
+        in_pcls : tuple of ints
+            pdgids of incoming particles.
+            eg. for p p => (2212, 2212)
+        out_pcls : tuple of ints
+            pdgids of outgoing particles.
+            eg. for t t~ => (6, -6)
+        """
+        self._grp.attrs['in_pcls'] = in_pcls
+        self._grp.attrs['out_pcls'] = out_pcls
+
+    def set_com_energy(self, energy: float, unit: str) -> None:
+        """Writes the CoM energy and unit for the collision to
+        process metadata.
+
+        Parameters
+        ----------
+        energy : float
+            eg. 13.0
+        out_pcls : str
+            eg. 'GeV'
+        """
+        self._grp.attrs['com_e'] = energy
+        self._grp.attrs['e_unit'] = unit
+
+    def set_custom_meta(self, name: str, metadata: Any) -> None:
+        """Store custom metadata to the process.
+
+        Parameters
+        ----------
+        name : str
+            Handle to access the metadata at read time.
+        metadata : str, int, float, or iterables thereof
+            The data you wish to store.
+        """
+        self._grp.attrs[name] = metadata
+
+    def new_event(self) -> _EventWriter:
+        return _EventWriter(self)
+
+class HdfWriter(WriterBase):
+    """Class provides nested context managers for handling writing
+    particle data for hierarchical access.
+
+    The outer context manager (instantiated by this class) constructs
+    and prepares the file for writing.
+
+    The next layer down, a process context manager can be instantiated
+    with the `new_process()` method. This acts as a container for
+    hadronised showers generated with the same underlying process.
+    It may be called repeatedly to store data from different processes
+    within the same file.
+    Optional methods are provided to write metadata to these containers,
+    describing the hard event.
+    The number of events written within this container is automatically
+    stored to the metadata.
+
+    The final layer is the event context manager, and can be
+    instantiated with the `new_event()` method.
+    This creates an event within the process container, and provides
+    methods for writing particle data to the event.
+    Repeatedly opening this context writes successive events under
+    the same process.
+
+    Parameters
+    ----------
+    path : str
+        Filepath for output.
+    """
+    def __init__(self, path: str):
+        self.path = path
+
+    def __enter__(self):
+        self._buffer = h5py.File(self.path, 'w', libver='latest')
+        return self
+
+    def __exit__(self, exc_type, exc_value, exc_traceback):
+        self._buffer.close()
+
+    def new_process(self, name: str) -> _ProcessWriter:
+        """Returns a context handler object for storage of data in
+        a given hard process.
+
+        Events can be iteratively added to this process by repeatedly
+        calling the `new_event()` method, which itself returns a context
+        handler object.
+
+        Parameters
+        ----------
+        key : str
+            Arbitrary name, used to look up data with reader.
+
+        """
+        return _ProcessWriter(self, key=name)
