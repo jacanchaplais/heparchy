@@ -1,3 +1,20 @@
+"""
+heparchy.data.event
+===================
+
+This module defines the dataclasses and methods which construct the
+DAG of the event generation.
+
+Deprecation notice
+------------------
+Warning: this functionality is going to be moved from the heparchy
+package into graphicle, instead.
+
+Graphicle is a package designed to embed and process particle physics
+data on graph stuctures, whereas heparchy is intended only to provide
+hierarchical and high performance I/O for particle physics data.
+"""
+
 from copy import deepcopy
 from functools import wraps
 
