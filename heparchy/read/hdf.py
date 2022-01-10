@@ -1,4 +1,3 @@
-from functools import wraps
 from copy import deepcopy
 from os.path import basename
 
@@ -6,7 +5,7 @@ import numpy as np
 import h5py
 
 from heparchy import event_key_format
-from ._interface import ReaderBase, EventReaderBase, ProcessReaderBase
+from ._base import ReaderBase, EventReaderBase, ProcessReaderBase
 
 
 class _EventReader(EventReaderBase):

@@ -4,7 +4,7 @@ import numpy as np
 import h5py
 
 from heparchy import TYPE, PMU_DTYPE, EDGE_DTYPE, event_key_format
-from ._interface import WriterBase, ProcessWriterBase, EventWriterBase
+from ._base import WriterBase, ProcessWriterBase, EventWriterBase
 
 
 class _EventWriter(EventWriterBase):

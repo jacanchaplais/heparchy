@@ -5,3 +5,5 @@ Notes
 -----
 Currently only implemented for hdf5.
 """
+
+from .hdf import HdfWriter
