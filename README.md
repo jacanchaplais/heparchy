@@ -5,7 +5,7 @@ Docstrings are available, markdown documentation coming soon.
 
 ## Installation
 ```
-pip install git+https://github.com/jacanchaplais/heparchy.git#egg=heparchy
+pip install heparchy
 ```
 
 # Features
