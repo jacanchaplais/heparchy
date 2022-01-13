@@ -14,6 +14,10 @@ class EventWriterBase(ABC):
         pass
 
     @abstractmethod
+    def set_color(self, data: np.ndarray) -> None:
+        pass
+
+    @abstractmethod
     def set_pdg(self, data: np.ndarray) -> None:
         pass
 

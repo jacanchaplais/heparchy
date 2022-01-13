@@ -3,12 +3,14 @@ from typing import Any
 import numpy as np
 import h5py
 
-from heparchy import TYPE, PMU_DTYPE, EDGE_DTYPE, event_key_format
+from heparchy import event_key_format
 from ._base import WriterBase, ProcessWriterBase, EventWriterBase
 
 
 class _EventWriter(EventWriterBase):
     def __init__(self, grp_obj: ProcessWriterBase):
+        from typicle import Types
+        self.__types = Types()
         self.__grp_obj = grp_obj # pointer to parent group obj
         self._idx = grp_obj._evt_idx # index for current event
         self.num_pcls = None
@@ -69,7 +71,7 @@ class _EventWriter(EventWriterBase):
                 name='edges',
                 data=data,
                 shape=data.shape,
-                dtype=EDGE_DTYPE,
+                dtype=self.__types.edge,
                 )
 
     def set_pmu(self, data: np.ndarray) -> None:
@@ -86,7 +88,23 @@ class _EventWriter(EventWriterBase):
                 name='pmu',
                 data=data,
                 shape=data.shape,
-                dtype=PMU_DTYPE,
+                dtype=self.__types.pmu,
+                )
+
+    def set_color(self, data: np.ndarray) -> None:
+        """Write color / anticolor pairs for all particles to event.
+        
+        Parameters
+        ----------
+        data : 2d array of ints.
+            Each row contains color / anticolor values respectively.
+        """
+        self.__set_num_pcls(data)
+        self.__mk_dset(
+                name='color',
+                data=data,
+                shape=data.shape,
+                dtype=self.__types.color,
                 )
 
     def set_pdg(self, data: np.ndarray) -> None:
@@ -103,7 +121,7 @@ class _EventWriter(EventWriterBase):
                 name='pdg',
                 data=data,
                 shape=(self.num_pcls,),
-                dtype=TYPE['int'],
+                dtype=self.__types.int,
                 )
     
     def set_mask(self, name: str, data: np.ndarray) -> None:
@@ -128,7 +146,7 @@ class _EventWriter(EventWriterBase):
                 name=name,
                 data=data,
                 shape=(self.num_pcls,),
-                dtype=TYPE['bool'],
+                dtype=types.bool,
                 )
 
     def set_custom_dataset(

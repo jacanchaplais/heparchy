@@ -27,6 +27,11 @@ class EventReaderBase(ABC):
 
     @property
     @abstractmethod
+    def color(self) -> np.ndarray:
+        """Getter for color pairs of all particles in event."""
+
+    @property
+    @abstractmethod
     def pdg(self) -> np.ndarray:
         """Getter for pdg codes of all particles in event."""
 

@@ -32,6 +32,10 @@ class _EventReader(EventReaderBase):
         return self._grp['pmu'][...]
 
     @property
+    def color(self) -> np.ndarray:
+        return self._grp['color'][...]
+
+    @property
     def pdg(self) -> np.ndarray:
         return self._grp['pdg'][...]
 
