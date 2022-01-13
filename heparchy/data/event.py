@@ -22,7 +22,6 @@ import attr
 import numpy as np
 
 import heparchy.utils as utils
-from heparchy import TYPE, REAL_TYPE
 
 
 def val_elems_int(instance, attribute, value):
@@ -87,7 +86,9 @@ class ShowerData:
     import pandas as __pd
     import networkx as __nx
     import vector as __vector
+    from typicle import Types as __Types
 
+    __types = __Types()
     __array_kwargs = dict(
             eq=attr.cmp_using(eq=np.array_equal),
             )
@@ -105,10 +106,10 @@ class ShowerData:
     @classmethod
     def empty(cls):
         return cls(
-            edges = np.array([[0, 1]], dtype=TYPE['int']),
-            pmu=np.array([[0.0, 0.0, 0.0, 0.0]], dtype=REAL_TYPE),
-            pdg=np.array([1], dtype=TYPE['int']),
-            final=np.array([False], dtype=TYPE['bool'])
+            edges = np.array([[0, 1]], dtype=cls.__types.int),
+            pmu=np.array([[0.0, 0.0, 0.0, 0.0]], dtype=cls.__types.pmu[0][1]),
+            pdg=np.array([1], dtype=cls.__types.int),
+            final=np.array([False], dtype=cls.__types.bool)
             )
 
     @property

@@ -1,7 +1,9 @@
 import numpy as np
 
-from heparchy import TYPE, PMU_DTYPE, EDGE_DTYPE, REAL_TYPE
+import typicle
 
+
+_types = typicle.Types()
 
 def structure_pmu(array: np.ndarray) -> np.ndarray:
     """Helper function to convert 4 column array into structured array
@@ -25,9 +27,9 @@ def structure_pmu(array: np.ndarray) -> np.ndarray:
     additional memory, so later changes to the original will not
     affect the returned array, and vice versa.
     """
-    if array.dtype != PMU_DTYPE:
-        struc_array = array.astype(REAL_TYPE)
-        struc_array =  struc_array.view(dtype=PMU_DTYPE, type=np.ndarray)
+    if array.dtype != _types.pmu:
+        struc_array = array.astype(_types.pmu[0][1])
+        struc_array =  struc_array.view(dtype=_types.pmu, type=np.ndarray)
         struc_pmu = struc_array.copy().squeeze()
     else:
         struc_pmu = array
@@ -54,7 +56,7 @@ def structure_pmu_components(x: np.ndarray, y: np.ndarray, z: np.ndarray,
     return structure_pmu(np.vstack(data).T)
 
 def unstructure_pmu(struc_array: np.ndarray,
-                         dtype=REAL_TYPE) -> np.ndarray:
+                    dtype=_types.pmu[0][1]) -> np.ndarray:
     """Returns view of 4-momentum data in columns (x, y, z, e) without
     as ordinary ndarray, without named columns.
 
@@ -76,14 +78,14 @@ def unstructure_pmu(struc_array: np.ndarray,
     return struc_array.view(dtype=dtype).reshape((-1, 4))
 
 def structure_edges(edges: np.ndarray) -> np.ndarray:
-    if edges.dtype != EDGE_DTYPE:
-        struc_array = edges.astype(TYPE['int'])
-        struc_array =  struc_array.view(dtype=EDGE_DTYPE, type=np.ndarray)
+    if edges.dtype != _types.edge:
+        struc_array = edges.astype(_types.int)
+        struc_array =  struc_array.view(dtype=_types.edge, type=np.ndarray)
         struc_edges = struc_array.copy().squeeze()
     else:
         struc_edges = edges
     return struc_edges
 
 def unstructure_edges(struc_array: np.ndarray,
-                         dtype=TYPE['int']) -> np.ndarray:
+                      dtype=_types.int) -> np.ndarray:
     return struc_array.view(dtype=dtype).reshape((-1, 2))

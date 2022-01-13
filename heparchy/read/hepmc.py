@@ -6,7 +6,6 @@ from itertools import chain
 
 import numpy as np
 
-from heparchy import TYPE, PMU_DTYPE, REAL_TYPE
 from heparchy.data.event import ShowerData
 from heparchy.utils import structure_pmu
 
@@ -55,6 +54,8 @@ class HepMC:
 
 
     def __init__(self, path):
+        from typicle import Types
+        self.__types = Types()
         self.path = path
         self.__gunz_f = None
         self.data = ShowerData.empty()
@@ -103,11 +104,13 @@ class HepMC:
             pmu, pdg, status = tuple(pcl.momentum), pcl.pid, pcl.status
             return edge_idxs, pmu, pdg, status
         edges, pmus, pdgs, statuses = zip(*map(pcl_data, pcls))
-        edges = np.fromiter(chain.from_iterable(edges), dtype=TYPE['int'])
+        edges = np.fromiter(chain.from_iterable(edges), dtype=self.__types.int)
         edges = edges.reshape((-1, 2))
-        pmu = np.array(list(pmus), dtype=REAL_TYPE)
+        pmu = np.array(list(pmus), dtype=self.__types.pmu[0][1])
         pmu = structure_pmu(pmu)
-        pdg = np.fromiter(pdgs, dtype=TYPE['int'])
+        pdg = np.fromiter(pdgs, dtype=self.__types.int)
         is_leaf = np.fromiter(
-                map(lambda status: status == 1, statuses), dtype=TYPE['bool'])
+                map(lambda status: status == 1, statuses),
+                dtype=self.__types.bool
+                )
         return edges, pmu, pdg, is_leaf
