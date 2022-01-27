@@ -28,6 +28,10 @@ class _EventReader(EventReaderBase):
         return self._grp['edges'][...]
 
     @property
+    def edge_weights(self) -> np.ndarray:
+        return self._grp['edge_weights'][...]
+
+    @property
     def pmu(self) -> np.ndarray:
         return self._grp['pmu'][...]
 

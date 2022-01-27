@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Optional
 
 import numpy as np
 import h5py
@@ -65,8 +65,37 @@ class _EventWriter(EventWriterBase):
                 )
         dset[...] = data
 
-    def set_edges(self, data: np.ndarray) -> None:
-        self.__set_num_pcls(data)
+    def set_edges(
+            self,
+            data: np.ndarray,
+            weights: Optional[np.ndarray] = None,
+            strict_size: bool = True) -> None:
+        """Write edge indices for event.
+        
+        Parameters
+        ----------
+        data : 2d array of ints
+            Each row contains a pair of in / out edge indices.
+        strict_size : bool
+            If True will assume number of edges = number of particles
+            (default: True).
+        """
+        if strict_size is True:
+            self.__set_num_pcls(data)
+        if weights is not None:
+            num_edges = len(data)
+            num_weights = len(weights)
+            if num_edges != num_weights:
+                raise ValueError(
+                    f"Incompatible shapes. Number of edges = {num_edges} and "
+                    + f"number of weights = {num_weights}. Must be same size."
+                    )
+            self.__mk_dset(
+                    name='edge_weights',
+                    data=weights,
+                    shape=weights.shape,
+                    dtype=self.__types.double,
+                    )
         self.__mk_dset(
                 name='edges',
                 data=data,
