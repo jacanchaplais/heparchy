@@ -146,7 +146,7 @@ class _EventWriter(EventWriterBase):
                 name=name,
                 data=data,
                 shape=(self.num_pcls,),
-                dtype=types.bool,
+                dtype=self.__types.bool,
                 )
 
     def set_custom_dataset(
