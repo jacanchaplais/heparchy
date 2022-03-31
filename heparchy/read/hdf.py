@@ -44,6 +44,14 @@ class _EventReader(EventReaderBase):
         return self._grp['pdg'][...]
 
     @property
+    def status(self) -> np.ndarray:
+        return self._grp['status'][...]
+
+    @property
+    def helicity(self) -> np.ndarray:
+        return self._grp['helicity'][...]
+
+    @property
     def available(self) -> list:
         dataset_names = list()
         self._grp.visit(lambda name: dataset_names.append(name))
@@ -55,6 +63,9 @@ class _EventReader(EventReaderBase):
     def get_custom(self, name: str):
         return self._grp[name][...]
 
+    def get_custom_meta(self, name: str):
+        return self._grp.attrs[name]
+    
     def copy(self):
         return deepcopy(self)
 
@@ -96,7 +107,7 @@ class _ProcessReader(ProcessReaderBase):
             'unit': self._meta['e_unit'],
             }
 
-    def get_custom(self, name: str):
+    def get_custom_meta(self, name: str):
         return self._meta[name]
     
     def read_event(self, evt_num):

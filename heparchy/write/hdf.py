@@ -152,6 +152,41 @@ class _EventWriter(EventWriterBase):
                 shape=(self.num_pcls,),
                 dtype=self.__types.int,
                 )
+
+    def set_status(self, data: np.ndarray) -> None:
+        """Write status codes for all particles to event.
+        
+        Parameters
+        ----------
+        data : iterable or 1d numpy array
+            Iterable of ints containing status codes for every
+            particle in the event.
+        """
+        self.__set_num_pcls(data)
+        self.__mk_dset(
+                name='status',
+                data=data,
+                shape=(self.num_pcls,),
+                dtype=self.__types.int,
+                )
+
+    def set_helicity(self, data: np.ndarray) -> None:
+        """Write helicity values for all particles to event.
+
+        Parameters
+        ----------
+        data : iterable or 1d numpy array
+            Iterable of floats containing helicity values for every
+            particle in the event.
+        """
+        self.__set_num_pcls(data)
+        self.__mk_dset(
+                name='helicity',
+                data=data,
+                shape=(self.num_pcls,),
+                dtype=self.__types.helicity,
+                )
+    
     
     def set_mask(self, name: str, data: np.ndarray) -> None:
         """Write bool mask for all particles in event.
@@ -200,6 +235,19 @@ class _EventWriter(EventWriterBase):
                 shape=data.shape,
                 dtype=dtype,
                 )
+
+    def set_custom_meta(self, name: str, metadata: Any) -> None:
+        """Store custom metadata to the event.
+
+        Parameters
+        ----------
+        name : str
+            Handle to access the metadata at read time.
+        metadata : str, int, float, or iterables thereof
+            The data you wish to store.
+        """
+        self.__evt.attrs[name] = metadata
+
 
 class _ProcessWriter(ProcessWriterBase):
     def __init__(self, file_obj: WriterBase, key: str):

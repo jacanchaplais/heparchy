@@ -91,7 +91,7 @@ class ProcessReaderBase(ABC):
         """
 
     @abstractmethod
-    def get_custom(self, name: str):
+    def get_custom_meta(self, name: str):
         """Returns user-defined piece of metadata."""
     
     @abstractmethod
