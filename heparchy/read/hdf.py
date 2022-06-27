@@ -52,6 +52,10 @@ class _EventReader(EventReaderBase):
         return self._grp['helicity'][...]
 
     @property
+    def final(self) -> np.ndarray:
+        return self.mask('final')
+
+    @property
     def available(self) -> list:
         dataset_names = list()
         self._grp.visit(lambda name: dataset_names.append(name))
