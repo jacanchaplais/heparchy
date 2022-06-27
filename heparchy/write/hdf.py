@@ -1,4 +1,5 @@
-from typing import Any, Optional
+from typing import Any, Optional, Union
+from pathlib import Path
 
 import numpy as np
 import h5py
@@ -214,7 +215,8 @@ class _EventWriter(EventWriterBase):
                 )
 
     def set_custom_dataset(
-            self, name: str, data: np.ndarray, dtype: Any) -> None:
+            self, name: str, data: np.ndarray, dtype: Any,
+            strict_size: bool = True) -> None:
         """Write a custom dataset to the event.
 
         Parameters
@@ -228,7 +230,8 @@ class _EventWriter(EventWriterBase):
             storage.
             Note: using little Endian for builtin datasets.
         """
-        self.__set_num_pcls(data)
+        if strict_size is True:
+            self.__set_num_pcls(data)
         self.__mk_dset(
                 name=name,
                 data=data,
