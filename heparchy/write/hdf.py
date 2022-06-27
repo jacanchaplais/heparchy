@@ -349,7 +349,7 @@ class HdfWriter(WriterBase):
     path : str
         Filepath for output.
     """
-    def __init__(self, path: str):
+    def __init__(self, path: Union[Path, str]):
         self.path = path
 
     def __enter__(self):
