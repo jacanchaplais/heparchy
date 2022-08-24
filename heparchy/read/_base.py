@@ -37,6 +37,11 @@ class EventReaderBase(ABC):
 
     @property
     @abstractmethod
+    def final(self) -> np.ndarray:
+        """Getter for mask identifying final state particles."""
+
+    @property
+    @abstractmethod
     def available(self) -> list:
         """Provides list of all dataset names in event."""
 
@@ -51,6 +56,7 @@ class EventReaderBase(ABC):
     @abstractmethod
     def copy(self):
         """Returns a deepcopy of this dataclass instance."""
+
 
 class ProcessReaderBase(ABC):
     """An iterator of EventReaderBase dataclass instances over the
@@ -95,10 +101,11 @@ class ProcessReaderBase(ABC):
         """Returns user-defined piece of metadata."""
     
     @abstractmethod
-    def read_event(self, evt_num):
+    def __getitem__(self, evt_num):
         """Provides option to get EventReaderBase object without
         iteration. Instead user supplies event number.
         """
+
 
 class ReaderBase(ABC):
     """Context manager for opening heparchy formatted files."""

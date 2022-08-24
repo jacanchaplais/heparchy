@@ -12,7 +12,7 @@ class _EventReader(EventReaderBase):
     __slots__ = ('_name', '_grp')
 
     def __init__(self, evt_data):
-        self._name = evt_data[0]
+        self._name: str = evt_data[0]
         self._grp = evt_data[1]
 
     @property
@@ -73,25 +73,28 @@ class _EventReader(EventReaderBase):
     def copy(self):
         return deepcopy(self)
 
+
 class _ProcessReader(ProcessReaderBase):
     def __init__(self, file_obj, key: str):
         self.__evt = _EventReader(evt_data=(None, None))
-        self.__proc_grp = file_obj._buffer[key]
+        self.__proc_grp: h5py.Group = file_obj._buffer[key]
         self._meta = dict(file_obj._buffer[key].attrs)
 
+    def __len__(self) -> int:
+        return int(self._meta['num_evts'])
+
     def __iter__(self):
-        def iter_evts():
-            for evt_data in self.__proc_grp.items():
-                self.__evt._name, self.__evt._grp = evt_data
-                yield self.__evt
-        self.__iter = iter_evts()
+        self._evt_gen = (self[i] for i in range(len(self)))
         return self
 
-    def __next__(self):
-        return next(self.__iter)
+    def __next__(self) -> _EventReader:
+        return next(self._evt_gen)
 
-    def __len__(self):
-        return int(self._meta['num_evts'])
+    def __getitem__(self, evt_num: int) -> _EventReader:
+        evt_name = event_key_format(evt_num)
+        self.__evt._name = evt_name
+        self.__evt._grp = self.__proc_grp[evt_name]
+        return self.__evt
 
     @property
     def string(self) -> str:
@@ -114,11 +117,6 @@ class _ProcessReader(ProcessReaderBase):
     def get_custom_meta(self, name: str):
         return self._meta[name]
     
-    def read_event(self, evt_num):
-        evt_name = event_key_format(evt_num)
-        self.__evt._name = evt_name
-        self.__evt._grp = self.__proc_grp[evt_name]
-        return self.__evt
 
 class HdfReader(ReaderBase):
     def __init__(self, path: str):
