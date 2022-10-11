@@ -99,7 +99,13 @@ class ProcessReaderBase(ABC):
     @abstractmethod
     def get_custom_meta(self, name: str):
         """Returns user-defined piece of metadata."""
-    
+
+    @abstractmethod
+    def read_event(self, evt_num) -> EventReaderBase:
+        """Alias for subscripting to prevent breaking changes.
+        Remove at 1.0 release.
+        """
+
     @abstractmethod
     def __getitem__(self, evt_num):
         """Provides option to get EventReaderBase object without

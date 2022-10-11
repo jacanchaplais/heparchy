@@ -1,5 +1,6 @@
 from copy import deepcopy
 from os.path import basename
+from warnings import warn
 
 import numpy as np
 import h5py
@@ -96,6 +97,16 @@ class _ProcessReader(ProcessReaderBase):
         self.__evt._grp = self.__proc_grp[evt_name]
         return self.__evt
 
+    def read_event(self, evt_num: int) -> _EventReader:
+        warn("read_event is deprecated, select events by directly "
+             "subscripting the process object, eg.\n"
+             "event = proc[0]\n"
+             "or iterating over the process with a for-loop, eg.\n"
+             "for event in proc: ...\n"
+             "This method and notice will be removed in version 1.0.0.",
+             DeprecationWarning, stacklevel=2)
+        return self[evt_num]
+
     @property
     def string(self) -> str:
         return self._meta['process']
@@ -116,7 +127,7 @@ class _ProcessReader(ProcessReaderBase):
 
     def get_custom_meta(self, name: str):
         return self._meta[name]
-    
+
 
 class HdfReader(ReaderBase):
     def __init__(self, path: str):
