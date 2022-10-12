@@ -140,5 +140,13 @@ class HdfReader(ReaderBase):
     def __exit__(self, exc_type, exc_value, exc_traceback):
         self._buffer.close()
 
-    def read_process(self, name: str):
-        return _ProcessReader(self, key=name)
+    def __getitem__(self, key: str) -> _ProcessReader:
+        return _ProcessReader(self, key=key)
+
+    def read_process(self, name: str) -> _ProcessReader:
+        warn("read_process is deprecated, select events by directly "
+             "subscripting the process object, eg.\n"
+             "proc = hep_file['default']\n"
+             "This method and notice will be removed in version 1.0.0.",
+             DeprecationWarning, stacklevel=2)
+        return self[name]
