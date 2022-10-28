@@ -1,61 +1,73 @@
-from typing import Any, Optional, Union
+"""
+`heparchy.write.hdf`
+===================
+
+Provides the interface to write HEP data to the heparchy HDF5 format.
+"""
+from __future__ import annotations
+from typing import Any, Optional, Union, Tuple, TypeVar, Sequence
 from pathlib import Path
 
 import numpy as np
+import numpy.typing as npt
 import h5py
+from h5py import Group, File
 
-from heparchy import event_key_format
-from ._base import WriterBase, ProcessWriterBase, EventWriterBase
+from heparchy.utils import deprecated, event_key_format
+from .base import WriterBase, ProcessWriterBase, EventWriterBase
+from heparchy.annotate import (
+        IntVector, HalfIntVector, DoubleVector, BoolVector, AnyVector,
+        DataType)
 
 
-class _EventWriter(EventWriterBase):
-    def __init__(self, grp_obj: ProcessWriterBase):
+class HdfEventWriter(EventWriterBase):
+    def __init__(self, grp_obj: HdfProcessWriter):
         from typicle import Types
         self.__types = Types()
-        self.__grp_obj = grp_obj # pointer to parent group obj
-        self._idx = grp_obj._evt_idx # index for current event
-        self.num_pcls = None
+        self.__grp_obj = grp_obj  # pointer to parent group obj
+        self._idx = grp_obj._evt_idx  # index for current event
+        self.num_pcls: Optional[int] = None
 
-    def __enter__(self):
+    def __enter__(self: HdfEventWriter) -> HdfEventWriter:
         self.__evt = self.__grp_obj._grp.create_group(
                 event_key_format(self._idx))
         return self
 
-    def __exit__(self, exc_type, exc_value, exc_traceback):
+    def __exit__(self, exc_type, exc_value, exc_traceback) -> None:
         # increasing the index for the group to create next event
         # also acts as running counter for number events
-        if self.num_pcls == None:
+        if self.num_pcls is None:
             self.num_pcls = 0
         self.__evt.attrs['num_pcls'] = self.num_pcls
         self.__grp_obj._evt_idx += 1
 
-    def __set_num_pcls(self, data: np.ndarray):
+    def __set_num_pcls(self, data: AnyVector) -> None:
         shape = data.shape
         num_pcls = shape[0]
 
-        if self.num_pcls == None:
+        if self.num_pcls is None:
             self.num_pcls = num_pcls
         elif num_pcls != self.num_pcls:
             raise ValueError(
-                    f'Datasets within same event must have the same '
-                    + f'number of particles (rows, if 2D array). '
-                    + f'Previous datasets had {self.num_pcls}, '
-                    + f'attempted dataset would have {num_pcls}.'
+                    "Datasets within same event must have the same "
+                    "number of particles (rows, if 2D array). "
+                    f"Previous datasets had {self.num_pcls}, "
+                    f"attempted dataset would have {num_pcls}."
                     )
         else:
             return
 
     def __mk_dset(
-            self, name: str, data: np.ndarray, shape: tuple,
-            dtype: Any) -> None:
+            self, name: str, data: AnyVector, shape: tuple,
+            dtype: npt.DTypeLike) -> None:
         """Generic dataset creation and population function.
         Wrap in methods exposed to the user interface.
         """
         # check data can be broadcasted to dataset:
         if data.squeeze().shape != shape:
             raise ValueError(
-                    f'Input data shape {data.shape} '
-                    + f'incompatible with dataset shape {shape}.'
+                    f"Input data shape {data.shape} "
+                    f"incompatible with dataset shape {shape}."
                     )
         dset = self.__evt.create_dataset(
                 name=name,
@@ -68,8 +80,8 @@ class _EventWriter(EventWriterBase):
 
     def set_edges(
             self,
-            data: np.ndarray,
-            weights: Optional[np.ndarray] = None,
+            data: AnyVector,
+            weights: Optional[DoubleVector] = None,
             strict_size: bool = True) -> None:
         """Write edge indices for event.
         
@@ -104,7 +116,7 @@ class _EventWriter(EventWriterBase):
                 dtype=self.__types.edge,
                 )
 
-    def set_pmu(self, data: np.ndarray) -> None:
+    def set_pmu(self, data: AnyVector) -> None:
         """Write 4-momentum for all particles to event.
         
         Parameters
@@ -121,7 +133,7 @@ class _EventWriter(EventWriterBase):
                 dtype=self.__types.pmu,
                 )
 
-    def set_color(self, data: np.ndarray) -> None:
+    def set_color(self, data: AnyVector) -> None:
         """Write color / anticolor pairs for all particles to event.
         
         Parameters
@@ -137,7 +149,7 @@ class _EventWriter(EventWriterBase):
                 dtype=self.__types.color,
                 )
 
-    def set_pdg(self, data: np.ndarray) -> None:
+    def set_pdg(self, data: IntVector) -> None:
         """Write pdg codes for all particles to event.
         
         Parameters
@@ -154,7 +166,7 @@ class _EventWriter(EventWriterBase):
                 dtype=self.__types.int,
                 )
 
-    def set_status(self, data: np.ndarray) -> None:
+    def set_status(self, data: HalfIntVector) -> None:
         """Write status codes for all particles to event.
         
         Parameters
@@ -171,7 +183,7 @@ class _EventWriter(EventWriterBase):
                 dtype=self.__types.int,
                 )
 
-    def set_helicity(self, data: np.ndarray) -> None:
+    def set_helicity(self, data: HalfIntVector) -> None:
         """Write helicity values for all particles to event.
 
         Parameters
@@ -188,8 +200,7 @@ class _EventWriter(EventWriterBase):
                 dtype=self.__types.helicity,
                 )
     
-    
-    def set_mask(self, name: str, data: np.ndarray) -> None:
+    def set_mask(self, name: str, data: BoolVector) -> None:
         """Write bool mask for all particles in event.
         
         Parameters
@@ -215,7 +226,9 @@ class _EventWriter(EventWriterBase):
                 )
 
     def set_custom_dataset(
-            self, name: str, data: np.ndarray, dtype: Any,
+            self, name: str,
+            data: AnyVector,
+            dtype: npt.DTypeLike,
             strict_size: bool = True) -> None:
         """Write a custom dataset to the event.
 
@@ -252,17 +265,18 @@ class _EventWriter(EventWriterBase):
         self.__evt.attrs[name] = metadata
 
 
-class _ProcessWriter(ProcessWriterBase):
-    def __init__(self, file_obj: WriterBase, key: str):
+class HdfProcessWriter(ProcessWriterBase):
+    def __init__(self, file_obj: HdfWriter, key: str) -> None:
         self.__file_obj = file_obj
         self.key = key
         self._evt_idx = 0
+        self._grp: Group
 
-    def __enter__(self):
+    def __enter__(self: HdfProcessWriter) -> HdfProcessWriter:
         self._grp = self.__file_obj._buffer.create_group(self.key)
         return self
 
-    def __exit__(self, exc_type, exc_value, exc_traceback):
+    def __exit__(self, exc_type, exc_value, exc_traceback) -> None:
         # count all of the events and write to attribute
         self._grp.attrs['num_evts'] = self._evt_idx
 
@@ -278,7 +292,8 @@ class _ProcessWriter(ProcessWriterBase):
         """
         self._grp.attrs['process'] = proc_str
 
-    def set_decay(self, in_pcls: tuple, out_pcls: tuple) -> None:
+    def set_decay(self, in_pcls: Sequence[int], out_pcls: Sequence[int]
+                  ) -> None:
         """Writes the pdgids of incoming and outgoing particles to
         process metadata.
 
@@ -320,8 +335,9 @@ class _ProcessWriter(ProcessWriterBase):
         """
         self._grp.attrs[name] = metadata
 
-    def new_event(self) -> _EventWriter:
-        return _EventWriter(self)
+    def new_event(self) -> HdfEventWriter:
+        return HdfEventWriter(self)
+
 
 class HdfWriter(WriterBase):
     """Class provides nested context managers for handling writing
@@ -352,17 +368,18 @@ class HdfWriter(WriterBase):
     path : str
         Filepath for output.
     """
-    def __init__(self, path: Union[Path, str]):
-        self.path = path
+    def __init__(self, path: Union[Path, str]) -> None:
+        self.path = Path(path)
+        self._buffer: File
 
-    def __enter__(self):
+    def __enter__(self: HdfWriter) -> HdfWriter:
         self._buffer = h5py.File(self.path, 'w', libver='latest')
         return self
 
-    def __exit__(self, exc_type, exc_value, exc_traceback):
+    def __exit__(self, exc_type, exc_value, exc_traceback) -> None:
         self._buffer.close()
 
-    def new_process(self, name: str) -> _ProcessWriter:
+    def new_process(self, name: str) -> HdfProcessWriter:
         """Returns a context handler object for storage of data in
         a given hard process.
 
@@ -376,4 +393,4 @@ class HdfWriter(WriterBase):
             Arbitrary name, used to look up data with reader.
 
         """
-        return _ProcessWriter(self, key=name)
+        return HdfProcessWriter(self, key=name)

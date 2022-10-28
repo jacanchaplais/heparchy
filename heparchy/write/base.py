@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 import numpy as np
+from h5py import Group, File
 
 
 class EventWriterBase(ABC):
@@ -50,6 +51,7 @@ class ProcessWriterBase(ABC):
     @abstractmethod
     def new_event(self) -> EventWriterBase:
         pass
+
 
 class WriterBase(ABC):
     @abstractmethod

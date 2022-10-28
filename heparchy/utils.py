@@ -1,11 +1,37 @@
 import numpy as np
 
+import warnings
+from functools import wraps
+from typing import Callable, Any
+
 import typicle
+from heparchy.annotate import AnyVector, DoubleVector, IntVector
+
+
+def event_key_format(evt_num: int) -> str:
+    return f"event_{evt_num:09}"
+
+
+def deprecated(func: Callable[..., Any]) -> Callable[..., Any]:
+    """This is a decorator which can be used to mark functions
+    as deprecated. It will result in a warning being emitted
+    when the function is used.
+    """
+    @wraps(func)
+    def new_func(*args, **kwargs):
+        warnings.simplefilter("always", DeprecationWarning)  # turn off filter
+        warnings.warn(f"Call to deprecated function {func.__name__}.",
+                      category=DeprecationWarning,
+                      stacklevel=2)
+        warnings.simplefilter("default", DeprecationWarning)  # reset filter
+        return func(*args, **kwargs)
+    return new_func
 
 
 _types = typicle.Types()
 
-def structure_pmu(array: np.ndarray) -> np.ndarray:
+
+def structure_pmu(array: AnyVector) -> AnyVector:
     """Helper function to convert 4 column array into structured array
     representing 4-momenta of particles.
     
@@ -29,14 +55,15 @@ def structure_pmu(array: np.ndarray) -> np.ndarray:
     """
     if array.dtype != _types.pmu:
         struc_array = array.astype(_types.pmu[0][1])
-        struc_array =  struc_array.view(dtype=_types.pmu, type=np.ndarray)
+        struc_array = struc_array.view(dtype=_types.pmu, type=np.ndarray)
         struc_pmu = struc_array.copy().squeeze()
     else:
         struc_pmu = array
     return struc_pmu
 
-def structure_pmu_components(x: np.ndarray, y: np.ndarray, z: np.ndarray,
-                             e: np.ndarray) -> np.ndarray:
+
+def structure_pmu_components(x: DoubleVector, y: DoubleVector, z: DoubleVector,
+                             e: DoubleVector) -> AnyVector:
     """Helper function to convert 1d arrays of 4-momentum components
     for particles into a single structured array.
 
@@ -49,14 +76,15 @@ def structure_pmu_components(x: np.ndarray, y: np.ndarray, z: np.ndarray,
     --------
     structure_pmu : structured array from single array with 4 columns.
     """
-    data = list(x, y, z, e)
+    data = [x, y, z, e]
     shapes = set(col.shape for col in data)
     if len(shapes) > 1:
         raise ValueError('Shapes of all input arrays must be equal')
     return structure_pmu(np.vstack(data).T)
 
-def unstructure_pmu(struc_array: np.ndarray,
-                    dtype=_types.pmu[0][1]) -> np.ndarray:
+
+def unstructure_pmu(struc_array: AnyVector,
+                    dtype=_types.pmu[0][1]) -> DoubleVector:
     """Returns view of 4-momentum data in columns (x, y, z, e) without
     as ordinary ndarray, without named columns.
 
@@ -77,15 +105,17 @@ def unstructure_pmu(struc_array: np.ndarray,
     """
     return struc_array.view(dtype=dtype).reshape((-1, 4))
 
-def structure_edges(edges: np.ndarray) -> np.ndarray:
+
+def structure_edges(edges: IntVector) -> AnyVector:
     if edges.dtype != _types.edge:
         struc_array = edges.astype(_types.int)
-        struc_array =  struc_array.view(dtype=_types.edge, type=np.ndarray)
+        struc_array = struc_array.view(dtype=_types.edge, type=np.ndarray)
         struc_edges = struc_array.copy().squeeze()
     else:
         struc_edges = edges
     return struc_edges
 
-def unstructure_edges(struc_array: np.ndarray,
-                      dtype=_types.int) -> np.ndarray:
+
+def unstructure_edges(struc_array: AnyVector,
+                      dtype=_types.int) -> IntVector:
     return struc_array.view(dtype=dtype).reshape((-1, 2))

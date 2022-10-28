@@ -1,4 +1,10 @@
-import numpy as np
+"""
+`heparchy`
+==========
+
+The hierarchically formatted high energy physics IO library.
+"""
+from heparchy import read, write
 
 
-event_key_format = lambda evt_num: f'event_{evt_num:09}'
+__all__ = ["read", "write"]
