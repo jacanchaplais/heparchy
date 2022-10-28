@@ -23,7 +23,7 @@ from heparchy.annotate import (
         DataType)
 
 
-MetaDictType = Dict[str, Union[str, int, float, bool, AnyVector]] 
+MetaDictType = Dict[str, Union[str, int, float, bool, AnyVector]]
 
 
 def type_error_str(data: Any, dtype: type) -> str:
@@ -178,5 +178,9 @@ class HdfReader(ReaderBase):
     def __exit__(self, exc_type, exc_value, exc_traceback) -> None:
         self._buffer.close()
 
+    def __getitem__(self, key: str) -> HdfProcessReader:
+        return HdfProcessReader(self, key=key)
+
+    @deprecated
     def read_process(self, name: str) -> HdfProcessReader:
-        return HdfProcessReader(self, key=name)
+        return self[name]
