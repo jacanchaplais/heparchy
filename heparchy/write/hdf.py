@@ -5,8 +5,9 @@
 Provides the interface to write HEP data to the heparchy HDF5 format.
 """
 from __future__ import annotations
-from typing import Any, Optional, Union, Tuple, TypeVar, Sequence
+from typing import Any, Optional, Union, Tuple, Sequence, Dict
 from pathlib import Path
+from enum import Enum
 
 import numpy as np
 import numpy.typing as npt
@@ -20,8 +21,13 @@ from heparchy.annotate import (
         DataType)
 
 
+class Compression(Enum):
+    LZF = "lzf"
+    GZIP = "gzip"
+
+
 class HdfEventWriter(EventWriterBase):
-    def __init__(self, grp_obj: HdfProcessWriter):
+    def __init__(self, grp_obj: HdfProcessWriter) -> None:
         from typicle import Types
         self.__types = Types()
         self.__grp_obj = grp_obj  # pointer to parent group obj
@@ -69,13 +75,17 @@ class HdfEventWriter(EventWriterBase):
                     f"Input data shape {data.shape} "
                     f"incompatible with dataset shape {shape}."
                     )
-        dset = self.__evt.create_dataset(
+        kwargs: Dict[str, Any] = dict(
                 name=name,
                 shape=shape,
                 dtype=dtype,
                 shuffle=True,
-                compression='lzf',
+                compression=self.__grp_obj._file_obj._cmprs.value,
                 )
+        cmprs_lvl = self.__grp_obj._file_obj._cmprs_lvl
+        if cmprs_lvl is not None:
+            kwargs["compression_opts"] = cmprs_lvl
+        dset = self.__evt.create_dataset(**kwargs)
         dset[...] = data
 
     def set_edges(
@@ -267,13 +277,13 @@ class HdfEventWriter(EventWriterBase):
 
 class HdfProcessWriter(ProcessWriterBase):
     def __init__(self, file_obj: HdfWriter, key: str) -> None:
-        self.__file_obj = file_obj
+        self._file_obj = file_obj
         self.key = key
         self._evt_idx = 0
         self._grp: Group
 
     def __enter__(self: HdfProcessWriter) -> HdfProcessWriter:
-        self._grp = self.__file_obj._buffer.create_group(self.key)
+        self._grp = self._file_obj._buffer.create_group(self.key)
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback) -> None:
@@ -368,9 +378,17 @@ class HdfWriter(WriterBase):
     path : str
         Filepath for output.
     """
-    def __init__(self, path: Union[Path, str]) -> None:
+    def __init__(self,
+                 path: Union[Path, str],
+                 compression: Compression = Compression.GZIP,
+                 compression_level: Optional[int] = 4,
+                 ) -> None:
         self.path = Path(path)
         self._buffer: File
+        self._cmprs = compression
+        if compression is Compression.LZF:
+            compression_level = None
+        self._cmprs_lvl = compression_level
 
     def __enter__(self: HdfWriter) -> HdfWriter:
         self._buffer = h5py.File(self.path, 'w', libver='latest')
