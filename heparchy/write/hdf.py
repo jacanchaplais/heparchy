@@ -21,6 +21,9 @@ from heparchy.annotate import (
         DataType)
 
 
+WRITE_ONLY_MSG = "Attribute is write-only."
+
+
 class Compression(Enum):
     LZF = "lzf"
     GZIP = "gzip"
@@ -126,15 +129,24 @@ class HdfEventWriter(EventWriterBase):
                 dtype=self.__types.edge,
                 )
 
+    @deprecated
     def set_pmu(self, data: AnyVector) -> None:
+        self.pmu = data
+
+    @property
+    def pmu(self) -> AnyVector:
         """Write 4-momentum for all particles to event.
-        
+
         Parameters
         ----------
         data : 2d array of floats.
             Each row contains momentum of one particle,
             in order [px, py, pz, e].
         """
+        raise AttributeError(WRITE_ONLY_MSG)
+
+    @pmu.setter
+    def pmu(self, data: AnyVector) -> None:
         self.__set_num_pcls(data)
         self.__mk_dset(
                 name='pmu',
@@ -143,14 +155,23 @@ class HdfEventWriter(EventWriterBase):
                 dtype=self.__types.pmu,
                 )
 
+    @deprecated
     def set_color(self, data: AnyVector) -> None:
+        self.color = data
+
+    @property
+    def color(self) -> AnyVector:
         """Write color / anticolor pairs for all particles to event.
-        
+
         Parameters
         ----------
         data : 2d array of ints.
             Each row contains color / anticolor values respectively.
         """
+        raise AttributeError(WRITE_ONLY_MSG)
+
+    @color.setter
+    def color(self, data: AnyVector) -> None:
         self.__set_num_pcls(data)
         self.__mk_dset(
                 name='color',
@@ -159,15 +180,24 @@ class HdfEventWriter(EventWriterBase):
                 dtype=self.__types.color,
                 )
 
+    @deprecated
     def set_pdg(self, data: IntVector) -> None:
-        """Write pdg codes for all particles to event.
-        
+        self.pdg = data
+
+    @property
+    def pdg(self) -> IntVector:
+        """Pdg codes for all particles in event.
+
         Parameters
         ----------
         data : iterable or 1d numpy array
             Iterable of ints containing pdg codes for every
             particle in the event.
         """
+        raise AttributeError(WRITE_ONLY_MSG)
+
+    @pdg.setter
+    def pdg(self, data: IntVector) -> None:
         self.__set_num_pcls(data)
         self.__mk_dset(
                 name='pdg',
@@ -176,7 +206,16 @@ class HdfEventWriter(EventWriterBase):
                 dtype=self.__types.int,
                 )
 
-    def set_status(self, data: HalfIntVector) -> None:
+    @deprecated
+    def set_status(self, data: IntVector) -> None:
+        self.status = data
+
+    @property
+    def status(self) -> IntVector:
+        raise AttributeError(WRITE_ONLY_MSG)
+
+    @status.setter
+    def status(self, data: IntVector) -> None:
         """Write status codes for all particles to event.
         
         Parameters
@@ -193,7 +232,16 @@ class HdfEventWriter(EventWriterBase):
                 dtype=self.__types.int,
                 )
 
+    @deprecated
     def set_helicity(self, data: HalfIntVector) -> None:
+        self.helicity = data
+
+    @property
+    def helicity(self) -> HalfIntVector:
+        raise AttributeError(WRITE_ONLY_MSG)
+
+    @helicity.setter
+    def helicity(self, data: HalfIntVector) -> None:
         """Write helicity values for all particles to event.
 
         Parameters
