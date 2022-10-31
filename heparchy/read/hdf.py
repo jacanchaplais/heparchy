@@ -6,10 +6,12 @@ Defines the data structures to open and iterate through heparchy
 formatted HDF5 files.
 """
 from __future__ import annotations
-from typing import Any, List, Dict, Sequence, Type, Iterator, Union
+from typing import Any, List, Dict, Sequence, Type, Iterator, Union, Set
+from collections.abc import Mapping
 from copy import deepcopy
 from os.path import basename
 from pathlib import Path
+from functools import cached_property
 
 import numpy as np
 import h5py
@@ -24,6 +26,44 @@ from heparchy.annotate import (
 
 
 MetaDictType = Dict[str, Union[str, int, float, bool, AnyVector]]
+READ_ONLY_MSG = "Attribute is read-only."
+
+
+class MaskReader(Mapping[str, BoolVector]):
+    def __init__(self, event: HdfEventReader) -> None:
+        self.event = event
+
+    def __repr__(self) -> str:
+        dset_repr = "<Read-Only Data>"
+        kv = ", ".join(map(lambda k: f"\'{k}\': {dset_repr}", self))
+        return "{" + f"{kv}" + "}"
+
+    def __len__(self) -> int:
+        return len(tuple(iter(self)))
+
+    def __getitem__(self, name: str) -> BoolVector:
+        if name not in set(self):
+            raise KeyError("No mask stored with this name")
+        return self.event._grp[name][...]
+
+    def __setitem__(self, name: str, data: BoolVector) -> None:
+        raise AttributeError(READ_ONLY_MSG)
+
+    def __delitem__(self, name: str) -> None:
+        raise AttributeError(READ_ONLY_MSG)
+
+    def __iter__(self) -> Iterator[str]:
+        mask_keys = "mask_keys"
+        grp = self.event._grp
+        if mask_keys not in grp.attrs:
+            dtype = np.dtype("<?")
+            for name, dset in grp.items():
+                if name == "final" or dset.dtype != dtype:
+                    continue
+                yield name
+        else:
+            for name in grp.attrs[mask_keys]:
+                yield name
 
 
 def type_error_str(data: Any, dtype: type) -> str:
@@ -101,8 +141,13 @@ class HdfEventReader(EventReaderBase):
         self._grp.visit(lambda name: dataset_names.append(name))
         return dataset_names
 
+    @deprecated
     def mask(self, name: str) -> BoolVector:
         return self._grp[name][...]
+
+    @cached_property
+    def masks(self) -> MaskReader:
+        return MaskReader(self)
 
     def get_custom(self, name: str) -> AnyVector:
         return self._grp[name][...]

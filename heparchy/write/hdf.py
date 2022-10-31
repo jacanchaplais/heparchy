@@ -5,11 +5,11 @@
 Provides the interface to write HEP data to the heparchy HDF5 format.
 """
 from __future__ import annotations
-from typing import Any, Optional, Union, Tuple, Sequence, Dict
+from typing import Any, Optional, Union, Sequence, Dict, Set, Iterator
+from collections.abc import MutableMapping, KeysView
 from pathlib import Path
 from enum import Enum
 
-import numpy as np
 import numpy.typing as npt
 import h5py
 from h5py import Group, File
@@ -17,29 +17,72 @@ from h5py import Group, File
 from heparchy.utils import deprecated, event_key_format
 from .base import WriterBase, ProcessWriterBase, EventWriterBase
 from heparchy.annotate import (
-        IntVector, HalfIntVector, DoubleVector, BoolVector, AnyVector,
-        DataType)
+        IntVector, HalfIntVector, DoubleVector, BoolVector, AnyVector)
 
 
 WRITE_ONLY_MSG = "Attribute is write-only."
 
 
 class Compression(Enum):
+    """Sets the compression algorithm used to store the datasets."""
     LZF = "lzf"
     GZIP = "gzip"
 
 
+class MaskWriter(MutableMapping[str, BoolVector]):
+    def __init__(self, event: HdfEventWriter) -> None:
+        self.event = event
+        self._names: Set[str] = set()
+
+    def __repr__(self) -> str:
+        dset_repr = "<Write-Only Data>"
+        kv = ", ".join(map(lambda k: f"\'{k}\': {dset_repr}", self._names))
+        return "{" + f"{kv}" + "}"
+
+    def __len__(self) -> int:
+        return len(self._names)
+
+    def __getitem__(self, name: str) -> BoolVector:
+        raise AttributeError(WRITE_ONLY_MSG)
+
+    def __setitem__(self, name: str, data: BoolVector) -> None:
+        self.event._set_num_pcls(data)
+        self.event._mk_dset(
+                name=name,
+                data=data,
+                shape=(self.event.num_pcls,),
+                dtype=self.event._types.bool,
+                )
+        self._names.add(name)
+
+    def __delitem__(self, name: str) -> None:
+        del self.event._evt[name]
+        self._names.remove(name)
+
+    def __iter__(self) -> Iterator[str]:
+        for name in self._names:
+            yield name
+
+
 class HdfEventWriter(EventWriterBase):
+    """Context manager interface to create and write events.
+
+    Attributes
+    ----------
+    """
     def __init__(self, grp_obj: HdfProcessWriter) -> None:
         from typicle import Types
-        self.__types = Types()
+        self._types = Types()
         self.__grp_obj = grp_obj  # pointer to parent group obj
         self._idx = grp_obj._evt_idx  # index for current event
         self.num_pcls: Optional[int] = None
+        self._evt: Group
+        self.masks: MaskWriter
 
     def __enter__(self: HdfEventWriter) -> HdfEventWriter:
-        self.__evt = self.__grp_obj._grp.create_group(
+        self._evt = self.__grp_obj._grp.create_group(
                 event_key_format(self._idx))
+        self.masks = MaskWriter(self)
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback) -> None:
@@ -47,10 +90,11 @@ class HdfEventWriter(EventWriterBase):
         # also acts as running counter for number events
         if self.num_pcls is None:
             self.num_pcls = 0
-        self.__evt.attrs['num_pcls'] = self.num_pcls
+        self._evt.attrs["num_pcls"] = self.num_pcls
+        self._evt.attrs["mask_keys"] = tuple(self.masks.keys())
         self.__grp_obj._evt_idx += 1
 
-    def __set_num_pcls(self, data: AnyVector) -> None:
+    def _set_num_pcls(self, data: AnyVector) -> None:
         shape = data.shape
         num_pcls = shape[0]
 
@@ -66,9 +110,9 @@ class HdfEventWriter(EventWriterBase):
         else:
             return
 
-    def __mk_dset(
+    def _mk_dset(
             self, name: str, data: AnyVector, shape: tuple,
-            dtype: npt.DTypeLike) -> None:
+            dtype: npt.DTypeLike, is_mask: bool = False) -> None:
         """Generic dataset creation and population function.
         Wrap in methods exposed to the user interface.
         """
@@ -88,8 +132,17 @@ class HdfEventWriter(EventWriterBase):
         cmprs_lvl = self.__grp_obj._file_obj._cmprs_lvl
         if cmprs_lvl is not None:
             kwargs["compression_opts"] = cmprs_lvl
-        dset = self.__evt.create_dataset(**kwargs)
+        dset = self._evt.create_dataset(**kwargs)
         dset[...] = data
+        dset.attrs["mask"] = is_mask
+
+    def __setitem__(self, name: str, data: AnyVector) -> None:
+        self._mk_dset(
+                name=name,
+                data=data,
+                shape=data.shape,
+                dtype=data.dtype,
+                )
 
     def set_edges(
             self,
@@ -107,7 +160,7 @@ class HdfEventWriter(EventWriterBase):
             (default: True).
         """
         if strict_size is True:
-            self.__set_num_pcls(data)
+            self._set_num_pcls(data)
         if weights is not None:
             num_edges = len(data)
             num_weights = len(weights)
@@ -116,17 +169,17 @@ class HdfEventWriter(EventWriterBase):
                     f"Incompatible shapes. Number of edges = {num_edges} and "
                     + f"number of weights = {num_weights}. Must be same size."
                     )
-            self.__mk_dset(
+            self._mk_dset(
                     name='edge_weights',
                     data=weights,
                     shape=weights.shape,
-                    dtype=self.__types.double,
+                    dtype=self._types.double,
                     )
-        self.__mk_dset(
+        self._mk_dset(
                 name='edges',
                 data=data,
                 shape=data.shape,
-                dtype=self.__types.edge,
+                dtype=self._types.edge,
                 )
 
     @deprecated
@@ -147,12 +200,12 @@ class HdfEventWriter(EventWriterBase):
 
     @pmu.setter
     def pmu(self, data: AnyVector) -> None:
-        self.__set_num_pcls(data)
-        self.__mk_dset(
+        self._set_num_pcls(data)
+        self._mk_dset(
                 name='pmu',
                 data=data,
                 shape=data.shape,
-                dtype=self.__types.pmu,
+                dtype=self._types.pmu,
                 )
 
     @deprecated
@@ -172,12 +225,12 @@ class HdfEventWriter(EventWriterBase):
 
     @color.setter
     def color(self, data: AnyVector) -> None:
-        self.__set_num_pcls(data)
-        self.__mk_dset(
+        self._set_num_pcls(data)
+        self._mk_dset(
                 name='color',
                 data=data,
                 shape=data.shape,
-                dtype=self.__types.color,
+                dtype=self._types.color,
                 )
 
     @deprecated
@@ -198,12 +251,12 @@ class HdfEventWriter(EventWriterBase):
 
     @pdg.setter
     def pdg(self, data: IntVector) -> None:
-        self.__set_num_pcls(data)
-        self.__mk_dset(
+        self._set_num_pcls(data)
+        self._mk_dset(
                 name='pdg',
                 data=data,
                 shape=(self.num_pcls,),
-                dtype=self.__types.int,
+                dtype=self._types.int,
                 )
 
     @deprecated
@@ -224,12 +277,12 @@ class HdfEventWriter(EventWriterBase):
             Iterable of ints containing status codes for every
             particle in the event.
         """
-        self.__set_num_pcls(data)
-        self.__mk_dset(
+        self._set_num_pcls(data)
+        self._mk_dset(
                 name='status',
                 data=data,
                 shape=(self.num_pcls,),
-                dtype=self.__types.int,
+                dtype=self._types.int,
                 )
 
     @deprecated
@@ -250,14 +303,15 @@ class HdfEventWriter(EventWriterBase):
             Iterable of floats containing helicity values for every
             particle in the event.
         """
-        self.__set_num_pcls(data)
-        self.__mk_dset(
+        self._set_num_pcls(data)
+        self._mk_dset(
                 name='helicity',
                 data=data,
                 shape=(self.num_pcls,),
-                dtype=self.__types.helicity,
+                dtype=self._types.helicity,
                 )
     
+    @deprecated
     def set_mask(self, name: str, data: BoolVector) -> None:
         """Write bool mask for all particles in event.
         
@@ -275,14 +329,9 @@ class HdfEventWriter(EventWriterBase):
             - provide mask for rapidity and pT cuts
             - if storing whole shower, identify final state
         """
-        self.__set_num_pcls(data)
-        self.__mk_dset(
-                name=name,
-                data=data,
-                shape=(self.num_pcls,),
-                dtype=self.__types.bool,
-                )
+        self.masks[name] = data
 
+    @deprecated
     def set_custom_dataset(
             self, name: str,
             data: AnyVector,
@@ -302,13 +351,8 @@ class HdfEventWriter(EventWriterBase):
             Note: using little Endian for builtin datasets.
         """
         if strict_size is True:
-            self.__set_num_pcls(data)
-        self.__mk_dset(
-                name=name,
-                data=data,
-                shape=data.shape,
-                dtype=dtype,
-                )
+            self._set_num_pcls(data)
+        self[name] = data
 
     def set_custom_meta(self, name: str, metadata: Any) -> None:
         """Store custom metadata to the event.
@@ -320,10 +364,15 @@ class HdfEventWriter(EventWriterBase):
         metadata : str, int, float, or iterables thereof
             The data you wish to store.
         """
-        self.__evt.attrs[name] = metadata
+        self._evt.attrs[name] = metadata
 
 
 class HdfProcessWriter(ProcessWriterBase):
+    """Context manager interface to create and write processes.
+
+    Attributes
+    ----------
+    """
     def __init__(self, file_obj: HdfWriter, key: str) -> None:
         self._file_obj = file_obj
         self.key = key
@@ -423,7 +472,7 @@ class HdfWriter(WriterBase):
 
     Parameters
     ----------
-    path : str
+    path : Path, str
         Filepath for output.
     """
     def __init__(self,
