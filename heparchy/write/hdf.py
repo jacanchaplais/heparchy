@@ -472,6 +472,7 @@ class HdfProcessWriter(ProcessWriterBase):
 
     def __exit__(self, exc_type, exc_value, exc_traceback) -> None:
         # count all of the events and write to attribute
+        self._grp.attrs["custom_meta_keys"] = self.custom_meta._flush()
         self._grp.attrs["num_evts"] = self._evt_idx
 
     @deprecated
