@@ -1,6 +1,6 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
-from typing import List, Any, Dict, TypedDict
+from typing import List, Any, Dict
 
 import numpy as np
 import numpy.typing as npt
@@ -10,11 +10,6 @@ DoubleVector = npt.NDArray[np.float64]
 IntVector = npt.NDArray[np.int32]
 HalfIntVector = npt.NDArray[np.int16]
 BoolVector = npt.NDArray[np.bool_]
-
-
-class ComEnergyType(TypedDict):
-    energy: float
-    unit: str
 
 
 class EventReaderBase(ABC):

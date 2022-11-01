@@ -6,7 +6,9 @@ Defines the data structures to open and iterate through heparchy
 formatted HDF5 files.
 """
 from __future__ import annotations
-from typing import Any, List, Dict, Sequence, Type, Iterator, Union, Set
+from typing import (
+        Any, List, Dict, Sequence, Type, Iterator, Union, Set, TypeVar,
+        Callable, Generic, Tuple)
 from collections.abc import Mapping
 from copy import deepcopy
 from os.path import basename
@@ -15,11 +17,10 @@ from functools import cached_property
 
 import numpy as np
 import h5py
-from h5py import Group
+from h5py import AttributeManager, Group, Dataset
 
 from heparchy.utils import event_key_format, deprecated
-from .base import (
-        ReaderBase, EventReaderBase, ProcessReaderBase, ComEnergyType)
+from .base import ReaderBase, EventReaderBase, ProcessReaderBase
 from heparchy.annotate import (
         IntVector, HalfIntVector, DoubleVector, BoolVector, AnyVector,
         DataType)
@@ -27,11 +28,70 @@ from heparchy.annotate import (
 
 MetaDictType = Dict[str, Union[str, int, float, bool, AnyVector]]
 READ_ONLY_MSG = "Attribute is read-only."
+BUILTIN_PROPS: Set[str] = set()
+BUILTIN_METADATA = {"num_pcls", "mask_keys"}  # TODO: work out non-hardcoded
+PropMethod = TypeVar("PropMethod", bound=Callable)
+MapValue = TypeVar("MapValue")
+NOT_NUMPY_ERR = ValueError("Stored data type is corrupted.")
 
 
-class MaskReader(Mapping[str, BoolVector]):
-    def __init__(self, event: HdfEventReader) -> None:
-        self.event = event
+def register_builtin(func: PropMethod) -> PropMethod:
+    BUILTIN_PROPS.add(func.__name__)
+    return func
+
+
+def stored_keys(attrs: AttributeManager, key_attr_name: str) -> Iterator[str]:
+    key_ds = attrs[key_attr_name]
+    if not isinstance(key_ds, np.ndarray):
+        raise NOT_NUMPY_ERR
+    for name in tuple(key_ds):
+        yield name
+
+
+def _mask_iter(event: HdfEventReader) -> Iterator[str]:
+    key_attr_name = "mask_keys"
+    grp = event._grp
+    if key_attr_name not in grp.attrs:
+        dtype = np.dtype("<?")
+        for name, dset in grp.items():
+            if dset.dtype != dtype:
+                continue
+            yield name
+    else:
+        yield from stored_keys(grp.attrs, key_attr_name)
+
+
+def _custom_iter(event: HdfEventReader) -> Iterator[str]:
+    key_attr_name = "custom_keys"
+    grp = event._grp
+    if key_attr_name not in grp.attrs:
+        names = set(grp.keys()) - set(event.masks.keys())
+        for name in (names - BUILTIN_PROPS):
+            yield name
+    else:
+        yield from stored_keys(grp.attrs, key_attr_name)
+
+
+def _meta_iter(event: HdfEventReader) -> Iterator[str]:
+    key_attr_name = "custom_meta_keys"
+    grp = event._grp
+    if key_attr_name not in grp.attrs:
+        names = set(grp.attrs.keys())
+        for name in (names - BUILTIN_METADATA):
+            yield name
+    else:
+        yield from stored_keys(grp.attrs, key_attr_name)
+
+
+class MapReader(Generic[MapValue], Mapping[str, MapValue]):
+    """Read-only dictionary-like interface to user-named heparchy
+    datasets.
+    """
+    def __init__(self,
+                 event: HdfEventReader,
+                 map_iter: Callable[..., Iterator[str]]) -> None:
+        self._event = event
+        self._map_iter = map_iter
 
     def __repr__(self) -> str:
         dset_repr = "<Read-Only Data>"
@@ -41,29 +101,24 @@ class MaskReader(Mapping[str, BoolVector]):
     def __len__(self) -> int:
         return len(tuple(iter(self)))
 
-    def __getitem__(self, name: str) -> BoolVector:
+    def __getitem__(self, name: str) -> MapValue:
         if name not in set(self):
-            raise KeyError("No mask stored with this name")
-        return self.event._grp[name][...]
+            raise KeyError("No data stored with this name")
+        if self._map_iter.__name__ == "_meta_iter":
+            return self._event._grp.attrs[name]  # type: ignore
+        data = self._event._grp[name]
+        if not isinstance(data, Dataset):
+            raise NOT_NUMPY_ERR
+        return data[...]  # type: ignore
 
-    def __setitem__(self, name: str, data: BoolVector) -> None:
+    def __setitem__(self, name: str, data: MapValue) -> None:
         raise AttributeError(READ_ONLY_MSG)
 
     def __delitem__(self, name: str) -> None:
         raise AttributeError(READ_ONLY_MSG)
 
     def __iter__(self) -> Iterator[str]:
-        mask_keys = "mask_keys"
-        grp = self.event._grp
-        if mask_keys not in grp.attrs:
-            dtype = np.dtype("<?")
-            for name, dset in grp.items():
-                if name == "final" or dset.dtype != dtype:
-                    continue
-                yield name
-        else:
-            for name in grp.attrs[mask_keys]:
-                yield name
+        yield from self._map_iter(self._event)
 
 
 def type_error_str(data: Any, dtype: type) -> str:
@@ -93,7 +148,7 @@ class HdfEventReader(EventReaderBase):
 
     def __init__(self, evt_data) -> None:
         self._name: str = evt_data[0]
-        self._grp = evt_data[1]
+        self._grp: Group = evt_data[1]
 
     @property
     def name(self) -> str:
@@ -101,39 +156,71 @@ class HdfEventReader(EventReaderBase):
 
     @property
     def count(self) -> int:
-        return int(self._grp.attrs['num_pcls'])
+        value = self._grp.attrs['num_pcls']
+        if not isinstance(value, np.integer):
+            raise NOT_NUMPY_ERR
+        return int(value)
 
-    @property
+    @property  # type: ignore
+    @register_builtin
     def edges(self) -> AnyVector:
-        return self._grp['edges'][...]
+        data = self._grp["edges"]
+        if not isinstance(data, Dataset):
+            raise ValueError("Stored data is corrupted")
+        return data[...]
 
-    @property
+    @property  # type: ignore
+    @register_builtin
     def edge_weights(self) -> DoubleVector:
-        return self._grp['edge_weights'][...]
+        data = self._grp['edge_weights']
+        if not isinstance(data, Dataset):
+            raise NOT_NUMPY_ERR
+        return data[...]
 
-    @property
+    @property  # type: ignore
+    @register_builtin
     def pmu(self) -> AnyVector:
-        return self._grp['pmu'][...]
+        data = self._grp['pmu']
+        if not isinstance(data, Dataset):
+            raise NOT_NUMPY_ERR
+        return data[...]
 
-    @property
+    @property  # type: ignore
+    @register_builtin
     def color(self) -> AnyVector:
-        return self._grp['color'][...]
+        data = self._grp['color']
+        if not isinstance(data, Dataset):
+            raise NOT_NUMPY_ERR
+        return data[...]
 
-    @property
+    @property  # type: ignore
+    @register_builtin
     def pdg(self) -> IntVector:
-        return self._grp['pdg'][...]
+        data = self._grp['pdg']
+        if not isinstance(data, Dataset):
+            raise NOT_NUMPY_ERR
+        return data[...]
 
-    @property
+    @property  # type: ignore
+    @register_builtin
     def status(self) -> HalfIntVector:
-        return self._grp['status'][...]
+        data = self._grp['status']
+        if not isinstance(data, Dataset):
+            raise NOT_NUMPY_ERR
+        return data[...]
 
-    @property
+    @property  # type: ignore
+    @register_builtin
     def helicity(self) -> HalfIntVector:
-        return self._grp['helicity'][...]
+        data = self._grp['helicity']
+        if not isinstance(data, Dataset):
+            raise NOT_NUMPY_ERR
+        return data[...]
 
-    @property
+    @property  # type: ignore
+    @deprecated
     def final(self) -> BoolVector:
-        return self.mask('final')
+        return self.masks["final"]
 
     @property
     def available(self) -> List[str]:
@@ -143,18 +230,28 @@ class HdfEventReader(EventReaderBase):
 
     @deprecated
     def mask(self, name: str) -> BoolVector:
-        return self._grp[name][...]
+        return self.masks[name]
 
     @cached_property
-    def masks(self) -> MaskReader:
-        return MaskReader(self)
+    def masks(self) -> MapReader[BoolVector]:
+        return MapReader[BoolVector](self, _mask_iter)
 
+    @deprecated
     def get_custom(self, name: str) -> AnyVector:
-        return self._grp[name][...]
+        return self.custom[name]
+    
+    @cached_property
+    def custom(self) -> MapReader[AnyVector]:
+        return MapReader[AnyVector](self, _custom_iter)
 
+    @deprecated
     def get_custom_meta(self, name: str) -> Any:
         return self._grp.attrs[name]
-    
+
+    @cached_property
+    def custom_meta(self) -> MapReader[Any]:
+        return MapReader[Any](self, _meta_iter)
+
     def copy(self) -> HdfEventReader:
         return deepcopy(self)
 
@@ -181,31 +278,38 @@ class HdfProcessReader(ProcessReaderBase):
     def __getitem__(self, evt_num: int) -> HdfEventReader:
         evt_name = event_key_format(evt_num)
         self.__evt._name = evt_name
-        self.__evt._grp = self.__proc_grp[evt_name]
+        evt_grp = self.__proc_grp[evt_name]
+        if not isinstance(evt_grp, Group):
+            raise ValueError
+        self.__evt._grp = evt_grp
         return self.__evt
-
-    @property
-    def meta(self) -> MetaDictType:
-        return self._meta
 
     @deprecated
     def read_event(self, evt_num: int) -> HdfEventReader:
         return self[evt_num]
 
-    @property
+    @property  # type: ignore
+    @deprecated
     def string(self) -> str:
-        return check_type(self._meta["process"], str)
+        return self.process_string
 
     @property
+    def process_string(self) -> str:
+        return check_type(self._meta["process"], str)
+
+    @property  # type: ignore
+    @deprecated
     def decay(self) -> Dict[str, IntVector]:
         return format_array_dict(("in_pcls", "out_pcls"), self._meta)
 
     @property
-    def com_energy(self) -> ComEnergyType:
-        return {
-            "energy": check_type(self._meta['com_e'], float),
-            "unit": check_type(self._meta['e_unit'], str),
-            }
+    def signal_pdgs(self) -> IntVector:
+        return check_type(self._meta["signal_pdgs"], np.ndarray)
+
+    @property
+    def com_energy(self) -> Tuple[float, str]:
+        return (check_type(self._meta['com_e'], float),
+                check_type(self._meta['e_unit'], str))
 
     @deprecated
     def get_custom_meta(self, name: str) -> Any:

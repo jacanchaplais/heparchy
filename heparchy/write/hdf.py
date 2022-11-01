@@ -5,15 +5,19 @@
 Provides the interface to write HEP data to the heparchy HDF5 format.
 """
 from __future__ import annotations
-from typing import Any, Optional, Union, Sequence, Dict, Set, Iterator
-from collections.abc import MutableMapping, KeysView
+from typing import (
+        Any, Optional, Union, Sequence, Dict, Set, Iterator, Generic, TypeVar,
+        Callable, Tuple)
+from collections.abc import MutableMapping, Iterable
 from pathlib import Path
 from enum import Enum
+import warnings
 
 import numpy.typing as npt
 import h5py
 from h5py import Group, File
 
+import heparchy
 from heparchy.utils import deprecated, event_key_format
 from .base import WriterBase, ProcessWriterBase, EventWriterBase
 from heparchy.annotate import (
@@ -21,6 +25,13 @@ from heparchy.annotate import (
 
 
 WRITE_ONLY_MSG = "Attribute is write-only."
+MapGeneric = TypeVar("MapGeneric")
+IterItem = TypeVar("IterItem")
+WriterType = Union["HdfEventWriter", "HdfProcessWriter"]
+
+
+class OverwriteWarning(RuntimeWarning):
+    """A warning to be raised when a user writes a piece of data twice."""
 
 
 class Compression(Enum):
@@ -29,10 +40,41 @@ class Compression(Enum):
     GZIP = "gzip"
 
 
-class MaskWriter(MutableMapping[str, BoolVector]):
-    def __init__(self, event: HdfEventWriter) -> None:
-        self.event = event
+def _mask_setter(writer: HdfEventWriter, name: str, data: BoolVector) -> None:
+    writer._set_num_pcls(data)
+    writer._mk_dset(
+            name=name,
+            data=data,
+            shape=(writer.num_pcls,),
+            dtype=writer._types.bool,
+            )
+
+
+def _custom_setter(writer: HdfEventWriter, name: str, data: AnyVector) -> None:
+    writer._mk_dset(
+            name=name,
+            data=data,
+            shape=data.shape,
+            dtype=data.dtype,
+            )
+
+
+def _meta_setter(writer: Union[HdfProcessWriter, HdfEventWriter], name: str,
+                 data: Any) -> None:
+    writer._grp.attrs[name] = data
+
+
+class MapWriter(Generic[MapGeneric], MutableMapping[str, MapGeneric]):
+    """Provides a dictionary-like interface for writing user-named
+    datasets or metadata.
+    """
+    def __init__(self,
+                 writer: WriterType,
+                 setter_func: Callable[[WriterType, str, MapGeneric], None]
+                 ) -> None:
+        self.writer = writer
         self._names: Set[str] = set()
+        self._setter_func = setter_func
 
     def __repr__(self) -> str:
         dset_repr = "<Write-Only Data>"
@@ -42,26 +84,28 @@ class MaskWriter(MutableMapping[str, BoolVector]):
     def __len__(self) -> int:
         return len(self._names)
 
-    def __getitem__(self, name: str) -> BoolVector:
+    def __getitem__(self, name: str) -> MapGeneric:
         raise AttributeError(WRITE_ONLY_MSG)
 
-    def __setitem__(self, name: str, data: BoolVector) -> None:
-        self.event._set_num_pcls(data)
-        self.event._mk_dset(
-                name=name,
-                data=data,
-                shape=(self.event.num_pcls,),
-                dtype=self.event._types.bool,
-                )
+    def __setitem__(self, name: str, data: MapGeneric) -> None:
+        self._setter_func(self.writer, name, data)
         self._names.add(name)
 
     def __delitem__(self, name: str) -> None:
-        del self.event._evt[name]
         self._names.remove(name)
+        if self._setter_func.__name__ == "_meta_setter":
+            del self.writer._grp.attrs[name]
+            return
+        del self.writer._grp[name]
 
     def __iter__(self) -> Iterator[str]:
         for name in self._names:
             yield name
+
+    def _flush(self) -> Tuple[str, ...]:
+        data = tuple(self._names)
+        self._names = set()
+        return data
 
 
 class HdfEventWriter(EventWriterBase):
@@ -70,19 +114,27 @@ class HdfEventWriter(EventWriterBase):
     Attributes
     ----------
     """
-    def __init__(self, grp_obj: HdfProcessWriter) -> None:
+    __slots__ = ("_types", "__grp_obj", "_idx", "num_pcls", "_evt", "masks",
+                 "custom", "custom_meta", "_num_edges")
+
+    def __init__(self, proc: HdfProcessWriter) -> None:
         from typicle import Types
         self._types = Types()
-        self.__grp_obj = grp_obj  # pointer to parent group obj
-        self._idx = grp_obj._evt_idx  # index for current event
+        self._proc = proc  # pointer to parent group obj
+        self._idx = proc._evt_idx  # index for current event
         self.num_pcls: Optional[int] = None
-        self._evt: Group
-        self.masks: MaskWriter
+        self._grp: Group
+        self.masks: MapWriter[BoolVector]
+        self.custom: MapWriter[AnyVector]
+        self.custom_meta: MapWriter[Any]
+        self._num_edges = 0
 
     def __enter__(self: HdfEventWriter) -> HdfEventWriter:
-        self._evt = self.__grp_obj._grp.create_group(
+        self._grp = self._proc._grp.create_group(
                 event_key_format(self._idx))
-        self.masks = MaskWriter(self)
+        self.masks = MapWriter(self, _mask_setter)
+        self.custom = MapWriter(self, _custom_setter)
+        self.custom_meta = MapWriter(self, _meta_setter)
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback) -> None:
@@ -90,9 +142,11 @@ class HdfEventWriter(EventWriterBase):
         # also acts as running counter for number events
         if self.num_pcls is None:
             self.num_pcls = 0
-        self._evt.attrs["num_pcls"] = self.num_pcls
-        self._evt.attrs["mask_keys"] = tuple(self.masks.keys())
-        self.__grp_obj._evt_idx += 1
+        self._grp.attrs["num_pcls"] = self.num_pcls
+        self._grp.attrs["mask_keys"] = self.masks._flush()
+        self._grp.attrs["custom_keys"] = self.custom._flush()
+        self._grp.attrs["custom_meta_keys"] = self.custom_meta._flush()
+        self._proc._evt_idx += 1
 
     def _set_num_pcls(self, data: AnyVector) -> None:
         shape = data.shape
@@ -116,6 +170,9 @@ class HdfEventWriter(EventWriterBase):
         """Generic dataset creation and population function.
         Wrap in methods exposed to the user interface.
         """
+        if name in self._grp:
+            warnings.warn(f"Overwriting {name}", OverwriteWarning)
+            del self._grp[name]
         # check data can be broadcasted to dataset:
         if data.squeeze().shape != shape:
             raise ValueError(
@@ -127,23 +184,50 @@ class HdfEventWriter(EventWriterBase):
                 shape=shape,
                 dtype=dtype,
                 shuffle=True,
-                compression=self.__grp_obj._file_obj._cmprs.value,
+                compression=self._proc._file_obj._cmprs.value,
                 )
-        cmprs_lvl = self.__grp_obj._file_obj._cmprs_lvl
+        cmprs_lvl = self._proc._file_obj._cmprs_lvl
         if cmprs_lvl is not None:
             kwargs["compression_opts"] = cmprs_lvl
-        dset = self._evt.create_dataset(**kwargs)
+        dset = self._grp.create_dataset(**kwargs)
         dset[...] = data
         dset.attrs["mask"] = is_mask
 
-    def __setitem__(self, name: str, data: AnyVector) -> None:
+    @property
+    def edges(self) -> AnyVector:
+        raise AttributeError(WRITE_ONLY_MSG)
+
+    @edges.setter
+    def edges(self, data: AnyVector) -> None:
         self._mk_dset(
-                name=name,
+                name="edges",
                 data=data,
                 shape=data.shape,
-                dtype=data.dtype,
+                dtype=self._types.edge,
+                )
+        self._num_edges = len(data)
+
+    @property
+    def edge_weights(self) -> DoubleVector:
+        raise AttributeError(WRITE_ONLY_MSG)
+
+    @edge_weights.setter
+    def edge_weights(self, data: DoubleVector) -> None:
+        num_edges = self._num_edges
+        num_weights = len(data)
+        if (num_edges == 0) or (self._num_edges != num_weights):
+            raise ValueError(
+                f"Incompatible shapes. Number of edges = {num_edges} and "
+                + f"number of weights = {num_weights}. Must be same size."
+                )
+        self._mk_dset(
+                name="edge_weights",
+                data=data,
+                shape=data.shape,
+                dtype=self._types.double,
                 )
 
+    @deprecated
     def set_edges(
             self,
             data: AnyVector,
@@ -352,8 +436,9 @@ class HdfEventWriter(EventWriterBase):
         """
         if strict_size is True:
             self._set_num_pcls(data)
-        self[name] = data
+        self.custom[name] = data
 
+    @deprecated
     def set_custom_meta(self, name: str, metadata: Any) -> None:
         """Store custom metadata to the event.
 
@@ -364,7 +449,7 @@ class HdfEventWriter(EventWriterBase):
         metadata : str, int, float, or iterables thereof
             The data you wish to store.
         """
-        self._evt.attrs[name] = metadata
+        self.custom_meta[name] = metadata
 
 
 class HdfProcessWriter(ProcessWriterBase):
@@ -378,15 +463,18 @@ class HdfProcessWriter(ProcessWriterBase):
         self.key = key
         self._evt_idx = 0
         self._grp: Group
+        self.custom_meta: MapWriter[Any]
 
     def __enter__(self: HdfProcessWriter) -> HdfProcessWriter:
         self._grp = self._file_obj._buffer.create_group(self.key)
+        self.custom_meta = MapWriter(self, _meta_setter)
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback) -> None:
         # count all of the events and write to attribute
-        self._grp.attrs['num_evts'] = self._evt_idx
+        self._grp.attrs["num_evts"] = self._evt_idx
 
+    @deprecated
     def set_string(self, proc_str: str) -> None:
         """Writes the string formatted underlying event to the
         process metadata.
@@ -397,8 +485,17 @@ class HdfProcessWriter(ProcessWriterBase):
             MadGraph formatted string representing the hard event,
             eg. p p > t t~
         """
-        self._grp.attrs['process'] = proc_str
+        self.process_string = proc_str
 
+    @property
+    def process_string(self) -> str:
+        raise AttributeError(WRITE_ONLY_MSG)
+
+    @process_string.setter
+    def process_string(self, value: str) -> None:
+        self._grp.attrs["process"] = value
+
+    @deprecated
     def set_decay(self, in_pcls: Sequence[int], out_pcls: Sequence[int]
                   ) -> None:
         """Writes the pdgids of incoming and outgoing particles to
@@ -416,6 +513,15 @@ class HdfProcessWriter(ProcessWriterBase):
         self._grp.attrs['in_pcls'] = in_pcls
         self._grp.attrs['out_pcls'] = out_pcls
 
+    @property
+    def signal_pdgs(self) -> IntVector:
+        raise AttributeError(WRITE_ONLY_MSG)
+
+    @signal_pdgs.setter
+    def signal_pdgs(self, value: Sequence[int]) -> None:
+        self._grp.attrs["signal_pdgs"] = value
+
+    @deprecated
     def set_com_energy(self, energy: float, unit: str) -> None:
         """Writes the CoM energy and unit for the collision to
         process metadata.
@@ -430,6 +536,16 @@ class HdfProcessWriter(ProcessWriterBase):
         self._grp.attrs['com_e'] = energy
         self._grp.attrs['e_unit'] = unit
 
+    @property
+    def com_energy(self) -> Tuple[float, str]:
+        raise AttributeError(WRITE_ONLY_MSG)
+
+    @com_energy.setter
+    def com_energy(self, value: Tuple[float, str]) -> None:
+        self._grp.attrs["com_e"] = value[0]
+        self._grp.attrs["e_unit"] = value[1]
+
+    @deprecated
     def set_custom_meta(self, name: str, metadata: Any) -> None:
         """Store custom metadata to the process.
 
@@ -444,6 +560,28 @@ class HdfProcessWriter(ProcessWriterBase):
 
     def new_event(self) -> HdfEventWriter:
         return HdfEventWriter(self)
+
+    def event_iter(self, iterable: Iterable[IterItem]
+                   ) -> Iterator[Tuple[HdfEventWriter, IterItem]]:
+        """Wraps an iteratable object, returning a new iterator which
+        yields a new writeable event object followed by the value
+        obtained from the passed iterator.
+
+        Parameters
+        ----------
+        iterable : Iterable[IterItem]
+            Any iterable object, eg. tuples, lists, generators, etc.
+
+        Returns
+        -------
+        event : HdfEventWriter
+            Writeable event object.
+        value : IterItem
+            The value yielded by the input iterable.
+        """
+        for value in iterable:
+            with self.new_event() as event:
+                yield event, value
 
 
 class HdfWriter(WriterBase):
@@ -477,11 +615,13 @@ class HdfWriter(WriterBase):
     """
     def __init__(self,
                  path: Union[Path, str],
-                 compression: Compression = Compression.GZIP,
+                 compression: Union[str, Compression] = Compression.GZIP,
                  compression_level: Optional[int] = 4,
                  ) -> None:
         self.path = Path(path)
         self._buffer: File
+        if isinstance(compression, str):
+            compression = Compression(compression.lower())
         self._cmprs = compression
         if compression is Compression.LZF:
             compression_level = None
@@ -492,6 +632,10 @@ class HdfWriter(WriterBase):
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback) -> None:
+        self._buffer.attrs["layout"] = "heparchy"
+        self._buffer.attrs["version_tuple"] = tuple(
+                map(str, heparchy.__version_tuple__))
+        self._buffer.attrs["version"] = heparchy.__version__
         self._buffer.close()
 
     def new_process(self, name: str) -> HdfProcessWriter:
