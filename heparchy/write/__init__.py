@@ -9,9 +9,8 @@ Notes
 -----
 Currently only implemented for hdf5.
 """
-import heparchy.write.hdf as hdf
+from . import hdf
+from .hdf import *
 
 
-HdfWriter = hdf.HdfWriter
-
-__all__ = ["HdfWriter"]
+__all__ = hdf.__all__.copy()

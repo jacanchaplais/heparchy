@@ -9,12 +9,13 @@ Notes
 -----
 Currently only implemented for hepmc and hdf5.
 """
-import heparchy.read.hdf as hdf
+from . import hdf
+from .hdf import *
 import heparchy.read.hepmc as hepmc
 
 
-HdfReader = hdf.HdfReader
 HepMC = hepmc.HepMC
 
 
-__all__ = ["HdfReader", "HepMC"]
+__all__ = ["HepMC"]
+__all__.extend(hdf.__all__)
