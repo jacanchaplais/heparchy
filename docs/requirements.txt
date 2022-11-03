@@ -2,3 +2,4 @@ sphinx
 sphinx-autoapi
 sphinx_mdinclude
 sphinx-immaterial==0.10.0
+pygit2==1.10.1
