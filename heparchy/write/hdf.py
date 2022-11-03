@@ -42,19 +42,25 @@ def _export(procedure: ExportType) -> ExportType:
 
 @_export
 class Compression(Enum):
-    """Sets the compression algorithm used to store the datasets."""
+    """Sets the compression algorithm used to store the datasets.
+    :group: hepwrite
+    """
     LZF = "lzf"
     GZIP = "gzip"
 
 
 @_export
 class WriteOnlyError(RuntimeError):
-    """Raised when trying to access write-only data."""
+    """Raised when trying to access write-only data.
+    :group: hepwrite
+    """
 
 
 @_export
 class OverwriteWarning(RuntimeWarning):
-    """A warning to be raised when a user writes a piece of data twice."""
+    """A warning to be raised when a user writes a piece of data twice.
+    :group: hepwrite
+    """
 
 
 def _mask_setter(writer: WriterType, name: str, data: BoolVector) -> None:
@@ -88,6 +94,8 @@ def _meta_setter(writer: WriterType, name: str, data: Any) -> None:
 class MapWriter(Generic[MapGeneric], MutableMapping[str, MapGeneric]):
     """Provides a dictionary-like interface for writing user-named
     datasets or metadata.
+
+    :group: hepwrite
 
     Parameters
     ----------
@@ -153,8 +161,10 @@ class MapWriter(Generic[MapGeneric], MutableMapping[str, MapGeneric]):
 class HdfEventWriter(EventWriterBase):
     """Context manager interface to create and write events.
 
-    Attributes (write-only)
-    -----------------------
+    :group: hepwrite
+
+    Attributes
+    ----------
     edges : numpy.ndarray[int]
         A structured array providing edges for a graph representation,
         with fields "in" and "out".
@@ -185,12 +195,14 @@ class HdfEventWriter(EventWriterBase):
     Examples
     --------
     Store custom metadata to an event:
-    >>> import heparchy
-    >>>
-    >>> with heparchy.write.HdfWriter("showers.hdf5") as hep_file:
-    >>>     with hep_file.new_process("higgs") as proc:
-    >>>         with proc.new_event() as event:
-    >>>             event.custom_meta["num_jets"] = 4
+
+        >>> import heparchy
+        >>>
+        >>> with heparchy.write.HdfWriter("showers.hdf5") as hep_file:
+        >>>     with hep_file.new_process("higgs") as proc:
+        >>>         with proc.new_event() as event:
+        >>>             event.custom_meta["num_jets"] = 4
+
     """
     __slots__ = ("_types", "__grp_obj", "_idx", "_num_pcls", "_evt", "masks",
                  "custom", "custom_meta", "_num_edges")
@@ -312,6 +324,8 @@ class HdfEventWriter(EventWriterBase):
             weights: Optional[DoubleVector] = None,
             strict_size: bool = True) -> None:
         """Write edge indices for event.
+
+        :group: hepwrite
         
         Parameters
         ----------
@@ -348,6 +362,8 @@ class HdfEventWriter(EventWriterBase):
     def set_pmu(self, data: AnyVector) -> None:
         """Write 4-momentum for all particles to event.
 
+        :group: hepwrite
+
         Parameters
         ----------
         data : 2d array of floats.
@@ -374,6 +390,8 @@ class HdfEventWriter(EventWriterBase):
     def set_color(self, data: AnyVector) -> None:
         """Write color / anticolor pairs for all particles to event.
 
+        :group: hepwrite
+
         Parameters
         ----------
         data : 2d array of ints.
@@ -398,6 +416,8 @@ class HdfEventWriter(EventWriterBase):
     @deprecated
     def set_pdg(self, data: IntVector) -> None:
         """Pdg codes for all particles in event.
+
+        :group: hepwrite
 
         Parameters
         ----------
@@ -424,6 +444,8 @@ class HdfEventWriter(EventWriterBase):
     @deprecated
     def set_status(self, data: IntVector) -> None:
         """Write status codes for all particles to event.
+
+        :group: hepwrite
         
         Parameters
         ----------
@@ -451,6 +473,8 @@ class HdfEventWriter(EventWriterBase):
     def set_helicity(self, data: HalfIntVector) -> None:
         """Write helicity values for all particles to event.
 
+        :group: hepwrite
+
         Parameters
         ----------
         data : iterable or 1d numpy array
@@ -476,6 +500,8 @@ class HdfEventWriter(EventWriterBase):
     @deprecated
     def set_mask(self, name: str, data: BoolVector) -> None:
         """Write bool mask for all particles in event.
+
+        :group: hepwrite
         
         Parameters
         ----------
@@ -501,6 +527,8 @@ class HdfEventWriter(EventWriterBase):
             strict_size: bool = True) -> None:
         """Write a custom dataset to the event.
 
+        :group: hepwrite
+
         Parameters
         ----------
         name : str
@@ -520,6 +548,8 @@ class HdfEventWriter(EventWriterBase):
     def set_custom_meta(self, name: str, metadata: Any) -> None:
         """Store custom metadata to the event.
 
+        :group: hepwrite
+
         Parameters
         ----------
         name : str
@@ -533,6 +563,8 @@ class HdfEventWriter(EventWriterBase):
 @_export
 class HdfProcessWriter(ProcessWriterBase):
     """Context manager interface to create and write processes.
+
+    :group: hepwrite
 
     Attributes (write-only)
     -----------------------
@@ -552,16 +584,18 @@ class HdfProcessWriter(ProcessWriterBase):
     --------
     Wrap iterator with event_iter to obtain HdfEventWriter object, which
     stores pdg and pmu data to each event.
-    >>> import heparchy
-    >>> from showerpipe.generators import PythiaGenerator
-    >>>
-    >>> gen = PythiaGenerator("pythia-settings.cmnd", "higgs.lhe.gz")
-    >>> with heparchy.write.HdfWriter("showers.hdf5") as hep_file:
-    >>>     with hep_file.new_process("higgs") as proc:
-    >>>         for event_out, event_in in proc.event_iter(gen):
-    >>>             # event_in is generated from Pythia
-    >>>             event_out.pdg = event_in.pdg
-    >>>             event_out.pmu = event_in.pmu
+
+        >>> import heparchy
+        >>> from showerpipe.generators import PythiaGenerator
+        >>>
+        >>> gen = PythiaGenerator("pythia-card.cmnd", "higgs.lhe.gz")
+        >>> with heparchy.write.HdfWriter("showers.hdf5") as hep_file:
+        >>>     with hep_file.new_process("higgs") as proc:
+        >>>         for event_out, event_in in proc.event_iter(gen):
+        >>>             # event_in is generated from Pythia
+        >>>             event_out.pdg = event_in.pdg
+        >>>             event_out.pmu = event_in.pmu
+
     """
     def __init__(self, file_obj: HdfWriter, key: str) -> None:
         self._file_obj = file_obj
@@ -584,6 +618,8 @@ class HdfProcessWriter(ProcessWriterBase):
     def set_string(self, proc_str: str) -> None:
         """Writes the string formatted underlying event to the
         process metadata.
+
+        :group: hepwrite
         
         Parameters
         ----------
@@ -606,6 +642,8 @@ class HdfProcessWriter(ProcessWriterBase):
                   ) -> None:
         """Writes the pdgids of incoming and outgoing particles to
         process metadata.
+
+        :group: hepwrite
 
         Parameters
         ----------
@@ -632,6 +670,8 @@ class HdfProcessWriter(ProcessWriterBase):
         """Writes the CoM energy and unit for the collision to
         process metadata.
 
+        :group: hepwrite
+
         Parameters
         ----------
         energy : float
@@ -655,6 +695,8 @@ class HdfProcessWriter(ProcessWriterBase):
     def set_custom_meta(self, name: str, metadata: Any) -> None:
         """Store custom metadata to the process.
 
+        :group: hepwrite
+
         Parameters
         ----------
         name : str
@@ -672,6 +714,8 @@ class HdfProcessWriter(ProcessWriterBase):
         """Wraps an iteratable object, returning a new iterator which
         yields a new writeable event object followed by the value
         obtained from the passed iterator.
+
+        :group: hepwrite
 
         Parameters
         ----------
@@ -694,6 +738,8 @@ class HdfProcessWriter(ProcessWriterBase):
 class HdfWriter(WriterBase):
     """Create a new heparchy hdf5 file object with write access.
 
+    :group: hepwrite
+
     Parameters
     ----------
     path : Path | str
@@ -707,11 +753,12 @@ class HdfWriter(WriterBase):
     Examples
     --------
     Open a new heparchy HDF5 file, and create a process within it:
-    >>> import heparchy
-    >>>
-    >>> with heparchy.write.HdfWriter("showers.hdf5") as hep_file:
-    >>>     with hep_file.new_process("higgs") as proc:
-    >>>         ...
+
+        >>> import heparchy
+        >>>
+        >>> with heparchy.write.HdfWriter("showers.hdf5") as hep_file:
+        >>>     with hep_file.new_process("higgs") as proc:
+        >>>         ...
     """
     def __init__(
             self,
@@ -744,8 +791,10 @@ class HdfWriter(WriterBase):
         a given hard process.
 
         Events can be iteratively added to this process by repeatedly
-        calling the `new_event()` method, which itself returns a context
-        handler object.
+        calling the ``new_event()`` method, which itself returns a
+        context handler object.
+
+        :group: hepwrite
 
         Parameters
         ----------

@@ -17,5 +17,9 @@ import heparchy.read.hepmc as hepmc
 HepMC = hepmc.HepMC
 
 
-__all__ = ["HepMC"]
+class Wiggle:
+    pass
+
+
+__all__ = ["HepMC", "Wiggle"]
 __all__.extend(hdf.__all__)

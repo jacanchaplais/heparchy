@@ -6,14 +6,17 @@
 Welcome to heparchy's documentation!
 ====================================
 
+.. mdinclude:: ../../README.md
+
 .. toctree::
-   :maxdepth: 2
-   :caption: Contents:
+   :caption: API Reference
+   :hidden:
+
+   api.rst
 
 
-
-Indices and tables
-==================
+Index
+=====
 
 * :ref:`genindex`
 * :ref:`modindex`

@@ -50,7 +50,9 @@ MapValue = TypeVar("MapValue")
 
 @_export
 class ReadOnlyError(RuntimeError):
-    """Raised when trying to write to read-only data."""
+    """Raised when trying to write to read-only data.
+    :group: hepread
+    """
 
 
 def _reg_event_builtin(func: PropMethod) -> PropMethod:
@@ -105,6 +107,8 @@ def _meta_iter(reader: ReaderType) -> Iterator[str]:
 class MapReader(Generic[MapValue], Mapping[str, MapValue]):
     """Read-only dictionary-like interface to user-named heparchy
     datasets.
+
+    :group: hepread
 
     Parameters
     ----------
@@ -187,8 +191,10 @@ def _format_array_dict(
 class HdfEventReader(EventReaderBase):
     """A heparchy event reader object.
 
-    Attributes (read-only)
-    ----------------------
+    :group: hepread
+
+    Attributes
+    ----------
     name : str
         The string representation of the event's name.
     count : int
@@ -346,6 +352,8 @@ class HdfProcessReader(ProcessReaderBase):
     """A heparchy process object. This is a numerically subscriptable
     iterator.
 
+    :group: hepread
+
     Parameters
     ----------
     file_obj : HdfReader
@@ -374,23 +382,25 @@ class HdfProcessReader(ProcessReaderBase):
     Examples
     --------
     Access a process named "higgs" and access events:
-    >>> with heparchy.read.HdfReader("showers.hdf5") as hep_file:
-    >>>     proc = hep_file["higgs"]
-    >>>     for event in proc:  # iterate with for loop
-    >>>         ...
-    >>>     event = proc[5]  # access 6th event with explicit indexing
+
+        >>> with heparchy.read.HdfReader("showers.hdf5") as hep_file:
+        >>>     proc = hep_file["higgs"]
+        >>>     for event in proc:  # iterate with for loop
+        >>>         ...
+        >>>     event = proc[5]  # 6th event with explicit indexing
 
     Read metadata stored in a process:
-    >>> with heparchy.read.HdfReader("showers.hdf5") as hep_file:
-    >>>     proc = hep_file["higgs"]
-    >>>     print(proc.process_string)
-    >>>     print(proc.signal_pdgs)
-    >>>     print(proc.com_energy)
-    >>>     print(proc.custom_meta["decay_channels"])
-        p p > h z , (h > b b~) , (z > l+ l-)
-        [25, 5, -5]
-        (1300.0, "GeV")
-        semileptonic
+
+        >>> with heparchy.read.HdfReader("showers.hdf5") as hep_file:
+        >>>     proc = hep_file["higgs"]
+        >>>     print(proc.process_string)
+        >>>     print(proc.signal_pdgs)
+        >>>     print(proc.com_energy)
+        >>>     print(proc.custom_meta["decay_channels"])
+            p p > h z , (h > b b~) , (z > l+ l-)
+            [25, 5, -5]
+            (1300.0, "GeV")
+            semileptonic
     
     """
     def __init__(self, file_obj: HdfReader, key: str) -> None:
@@ -460,6 +470,8 @@ class HdfReader(ReaderBase):
     """Create a new heparchy hdf5 file object with read access.
     Processes stored within are accessed via string subscripting.
 
+    :group: hepread
+
     Parameters
     ----------
     path : pathlib.Path
@@ -468,9 +480,11 @@ class HdfReader(ReaderBase):
     Examples
     --------
     Opening a file using the context manager:
-    >>> import heparchy
-    >>> with heparchy.read.HdfReader("showers.hdf5") as hep_file:
-    >>>     ...
+
+        >>> import heparchy
+        >>> with heparchy.read.HdfReader("showers.hdf5") as hep_file:
+        >>>     ...
+
     """
     def __init__(self, path: Path) -> None:
         self.path = path
