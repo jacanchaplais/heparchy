@@ -29,7 +29,7 @@ copyright = "2022, Jacan Chaplais"
 author = "Jacan Chaplais"
 url = "https://github.com/jacanchaplais/heparchy"
 repo = Repository(".")
-branch_name = repo.head.shorthand
+commit_hash = repo.head.target
 proj_dir = Path(repo.path).parent
 
 # The full version, including alpha/beta/rc tags
@@ -115,7 +115,7 @@ def linkcode_resolve(domain: str, info: Dict[str, str]) -> Optional[str]:
             return None
         if filename in packages:
             filename = filename / "__init__.py"
-    link = f"{url}/blob/{branch_name}/{filename}"
+    link = f"{url}/blob/{commit_hash}/{filename}"
     return link
 
 
