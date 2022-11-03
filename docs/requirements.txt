@@ -1,4 +1,4 @@
 sphinx
 sphinx-autoapi
 sphinx_mdinclude
-sphinx-immaterial=0.10.0
+sphinx-immaterial==0.10.0
