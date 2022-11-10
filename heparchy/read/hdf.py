@@ -12,8 +12,8 @@ from copy import deepcopy
 from functools import cached_property
 from collections.abc import Mapping
 from typing import (
-        Any, List, Dict, Sequence, Type, Iterator, Union, Set, TypeVar,
-        Callable, Generic, Tuple)
+        Any, List, Dict, Sequence, Type, Iterator, Union, Set,
+        TypeVar, Callable, Generic, Tuple, Optional)
 
 import numpy as np
 import h5py
@@ -35,6 +35,7 @@ def _export(procedure: ExportType) -> ExportType:
 
 
 _NOT_NUMPY_ERR = ValueError("Stored data type is corrupted.")
+_NO_EVENT_ERR = AttributeError("Event reader not pointing to event.")
 _BUILTIN_PROPS: Set[str] = set()
 _BUILTIN_METADATA = {  # TODO: work out non-hardcoded
     "HdfEventReader": {"num_pcls", "mask_keys"},
@@ -68,39 +69,18 @@ def _stored_keys(attrs: AttributeManager, key_attr_name: str) -> Iterator[str]:
         yield name
 
 
-def _mask_iter(reader: HdfEventReader) -> Iterator[str]:
-    key_attr_name = "mask_keys"
-    grp = reader._grp
-    if key_attr_name not in grp.attrs:
-        dtype = np.dtype("<?")
-        for name, dset in grp.items():
-            if dset.dtype != dtype:
-                continue
-            yield name
-    else:
-        yield from _stored_keys(grp.attrs, key_attr_name)
+def _grp_key_iter(reader: Group) -> Iterator[str]:
+    yield from reader.keys()
 
 
-def _custom_iter(reader: HdfEventReader) -> Iterator[str]:
-    key_attr_name = "custom_keys"
-    grp = reader._grp
-    if key_attr_name not in grp.attrs:
-        names = set(grp.keys()) - set(reader.masks.keys())
-        for name in (names - _BUILTIN_PROPS):
-            yield name
-    else:
-        yield from _stored_keys(grp.attrs, key_attr_name)
-
-
-def _meta_iter(reader: ReaderType) -> Iterator[str]:
+def _meta_iter(reader: Group) -> Iterator[str]:
     key_attr_name = "custom_meta_keys"
-    grp = reader._grp
-    if key_attr_name not in grp.attrs:
-        names = set(grp.attrs.keys())
+    if key_attr_name not in reader.attrs:
+        names = set(reader.attrs.keys())
         for name in (names - _BUILTIN_METADATA[reader.__class__.__name__]):
             yield name
     else:
-        yield from _stored_keys(grp.attrs, key_attr_name)
+        yield from _stored_keys(reader.attrs, key_attr_name)
 
 
 @_export
@@ -133,9 +113,15 @@ class MapReader(Generic[MapValue], Mapping[str, MapValue]):
     """
     def __init__(self,
                  reader: ReaderType,
+                 grp_attr_name: str,
                  iter_func: Callable[..., Iterator[str]]) -> None:
         self._reader = reader
+        self._grp_attr_name = grp_attr_name
         self._iter_func = iter_func
+
+    @property
+    def _grp(self) -> Group:
+        return getattr(self._reader, self._grp_attr_name)
 
     def __repr__(self) -> str:
         dset_repr = "<Read-Only Data>"
@@ -149,8 +135,8 @@ class MapReader(Generic[MapValue], Mapping[str, MapValue]):
         if name not in set(self):
             raise KeyError("No data stored with this name")
         if self._iter_func.__name__ == "_meta_iter":
-            return self._reader._grp.attrs[name]  # type: ignore
-        data = self._reader._grp[name]
+            return self._grp.attrs[name]  # type: ignore
+        data = self._grp[name]
         if not isinstance(data, Dataset):
             raise _NOT_NUMPY_ERR
         return data[...]  # type: ignore
@@ -162,7 +148,7 @@ class MapReader(Generic[MapValue], Mapping[str, MapValue]):
         raise ReadOnlyError("Value is read-only")
 
     def __iter__(self) -> Iterator[str]:
-        yield from self._iter_func(self._reader)
+        yield from self._iter_func(self._grp)
 
 
 def _type_error_str(data: Any, dtype: type) -> str:
@@ -231,11 +217,37 @@ class HdfEventReader(EventReaderBase):
         Read-only dictionary-like interface to access user-defined
         metadata on the event.
     """
-    __slots__ = ('_name', '_grp')
+    def __init__(self) -> None:
+        self.__name: Optional[str] = None
+        self.__grp: Optional[Group] = None
+        self._custom_grp: Group
+        self._mask_grp: Group
 
-    def __init__(self, evt_data) -> None:
-        self._name: str = evt_data[0]
-        self._grp: Group = evt_data[1]
+    @property
+    def _name(self) -> str:
+        if self.__name is None:
+            raise _NO_EVENT_ERR
+        return self.__name
+
+    @_name.setter
+    def _name(self, val: str) -> None:
+        self.__name = val
+
+    @property
+    def _grp(self) -> Group:
+        if self.__grp is None:
+            raise _NO_EVENT_ERR
+        return self.__grp
+
+    @_grp.setter
+    def _grp(self, val: Group) -> None:
+        self.__grp = val
+        custom = val["custom"]
+        mask = val["masks"]
+        if (not isinstance(custom, Group)) or (not isinstance(mask, Group)):
+            raise ValueError("Group not found")
+        self._custom_grp = custom
+        self._mask_grp = mask
 
     @property
     def name(self) -> str:
@@ -322,7 +334,7 @@ class HdfEventReader(EventReaderBase):
 
     @cached_property
     def masks(self) -> MapReader[BoolVector]:
-        return MapReader[BoolVector](self, _mask_iter)
+        return MapReader[BoolVector](self, "_mask_grp", _grp_key_iter)
 
     @deprecated
     def get_custom(self, name: str) -> AnyVector:
@@ -331,7 +343,7 @@ class HdfEventReader(EventReaderBase):
     
     @cached_property
     def custom(self) -> MapReader[AnyVector]:
-        return MapReader[AnyVector](self, _custom_iter)
+        return MapReader[AnyVector](self, "_custom_grp", _grp_key_iter)
 
     @deprecated
     def get_custom_meta(self, name: str) -> Any:
@@ -340,7 +352,7 @@ class HdfEventReader(EventReaderBase):
 
     @cached_property
     def custom_meta(self) -> MapReader[Any]:
-        return MapReader[Any](self, _meta_iter)
+        return MapReader[Any](self, "_grp", _meta_iter)
 
     def copy(self) -> HdfEventReader:
         """Returns a deep copy of the event object."""
@@ -361,8 +373,8 @@ class HdfProcessReader(ProcessReaderBase):
     key : str
         The name of the process to be opened.
 
-    Attributes (read-only)
-    ----------------------
+    Attributes
+    ----------
     process_string : str
         The MadGraph string representation of the process.
     string : str, deprecated
@@ -404,13 +416,13 @@ class HdfProcessReader(ProcessReaderBase):
     
     """
     def __init__(self, file_obj: HdfReader, key: str) -> None:
-        self._evt = HdfEventReader(evt_data=(None, None))
+        self._evt = HdfEventReader()
         grp = file_obj._buffer[key]
         if not isinstance(grp, Group):
             raise KeyError(f"{key} is not a process")
         self._grp: Group = grp
         self._meta: MetaDictType = dict(file_obj._buffer[key].attrs)
-        self.custom_meta: MapReader[Any] = MapReader(self, _meta_iter)
+        self.custom_meta: MapReader[Any] = MapReader(self, "_grp", _meta_iter)
 
     def __len__(self) -> int:
         return int(self._meta["num_evts"])

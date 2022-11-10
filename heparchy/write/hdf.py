@@ -12,6 +12,7 @@ from collections.abc import MutableMapping, Iterable
 from pathlib import Path
 import warnings
 from enum import Enum
+from functools import partial
 
 
 import numpy.typing as npt
@@ -63,26 +64,61 @@ class OverwriteWarning(RuntimeWarning):
     """
 
 
+def _mk_dset(grp: Group, name: str, data: AnyVector, shape: tuple,
+             dtype: npt.DTypeLike, compression: Compression,
+             compression_level: Optional[int]) -> None:
+    """Generic dataset creation and population function.
+    Wrap in methods exposed to the user interface.
+    """
+    if name in grp:
+        warnings.warn(f"Overwriting {name}", OverwriteWarning)
+        del grp[name]
+    # check data can be broadcasted to dataset:
+    if data.squeeze().shape != shape:
+        raise ValueError(
+                f"Input data shape {data.shape} "
+                f"incompatible with dataset shape {shape}."
+                )
+    kwargs: Dict[str, Any] = dict(
+            name=name,
+            shape=shape,
+            dtype=dtype,
+            shuffle=True,
+            compression=compression.value,
+            )
+    cmprs_lvl = compression_level
+    if cmprs_lvl is not None:
+        kwargs["compression_opts"] = cmprs_lvl
+    dset = grp.create_dataset(**kwargs)
+    dset[...] = data
+
+
 def _mask_setter(writer: WriterType, name: str, data: BoolVector) -> None:
     if not isinstance(writer, HdfEventWriter):
         raise ValueError("Can't set masks on processes")
     writer._set_num_pcls(data)
-    writer._mk_dset(
+    _mk_dset(
+            writer._mask_grp,
             name=name,
             data=data,
-            shape=(writer.num_pcls,),
+            shape=data.shape,
             dtype=writer._types.bool,
+            compression=writer._proc._file_obj._cmprs,
+            compression_level=writer._proc._file_obj._cmprs_lvl,
             )
 
 
 def _custom_setter(writer: WriterType, name: str, data: AnyVector) -> None:
     if not isinstance(writer, HdfEventWriter):
         raise ValueError("Can't set custom datasets on processes")
-    writer._mk_dset(
+    _mk_dset(
+            writer._custom_grp,
             name=name,
             data=data,
             shape=data.shape,
             dtype=data.dtype,
+            compression=writer._proc._file_obj._cmprs,
+            compression_level=writer._proc._file_obj._cmprs_lvl,
             )
 
 
@@ -215,6 +251,8 @@ class HdfEventWriter(EventWriterBase):
         self._num_pcls: Optional[int] = None
         self._num_edges = 0
         self._grp: Group
+        self._custom_grp: Group
+        self._mask_grp: Group
         self.masks: MapWriter[BoolVector]
         self.custom: MapWriter[AnyVector]
         self.custom_meta: MapWriter[Any]
@@ -222,9 +260,17 @@ class HdfEventWriter(EventWriterBase):
     def __enter__(self: HdfEventWriter) -> HdfEventWriter:
         self._grp = self._proc._grp.create_group(
                 event_key_format(self._idx))
+        self._custom_grp = self._grp.create_group("custom")
+        self._mask_grp = self._grp.create_group("masks")
         self.masks = MapWriter(self, _mask_setter)
         self.custom = MapWriter(self, _custom_setter)
         self.custom_meta = MapWriter(self, _meta_setter)
+        self._mk_dset = partial(
+                _mk_dset,
+                grp=self._grp,
+                compression=self._proc._file_obj._cmprs,
+                compression_level=self._proc._file_obj._cmprs_lvl,
+                )
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback) -> None:
@@ -253,35 +299,6 @@ class HdfEventWriter(EventWriterBase):
                     )
         else:
             return
-
-    def _mk_dset(
-            self, name: str, data: AnyVector, shape: tuple,
-            dtype: npt.DTypeLike, is_mask: bool = False) -> None:
-        """Generic dataset creation and population function.
-        Wrap in methods exposed to the user interface.
-        """
-        if name in self._grp:
-            warnings.warn(f"Overwriting {name}", OverwriteWarning)
-            del self._grp[name]
-        # check data can be broadcasted to dataset:
-        if data.squeeze().shape != shape:
-            raise ValueError(
-                    f"Input data shape {data.shape} "
-                    f"incompatible with dataset shape {shape}."
-                    )
-        kwargs: Dict[str, Any] = dict(
-                name=name,
-                shape=shape,
-                dtype=dtype,
-                shuffle=True,
-                compression=self._proc._file_obj._cmprs.value,
-                )
-        cmprs_lvl = self._proc._file_obj._cmprs_lvl
-        if cmprs_lvl is not None:
-            kwargs["compression_opts"] = cmprs_lvl
-        dset = self._grp.create_dataset(**kwargs)
-        dset[...] = data
-        dset.attrs["mask"] = is_mask
 
     @property
     def edges(self) -> AnyVector:
