@@ -618,11 +618,21 @@ class HdfProcessWriter(ProcessWriterBase):
         self._file_obj = file_obj
         self.key = key
         self._evt_idx = 0
+        self._parent: Group
         self._grp: Group
         self.custom_meta: MapWriter[Any]
 
+    def _evtgrp_iter(self):
+        chunk = 0
+        while True:
+            grp = self._parent.create_group(f"{chunk:03}")
+            for i in range(1000):
+                yield grp
+            chunk = chunk + 1
+
     def __enter__(self: HdfProcessWriter) -> HdfProcessWriter:
-        self._grp = self._file_obj._buffer.create_group(self.key)
+        self._parent = self._file_obj._buffer.create_group(self.key)
+        self._events = self._evtgrp_iter()
         self.custom_meta = MapWriter(self, _meta_setter)
         return self
 
@@ -724,6 +734,7 @@ class HdfProcessWriter(ProcessWriterBase):
         self._grp.attrs[name] = metadata
 
     def new_event(self) -> HdfEventWriter:
+        self._grp = next(self._events)
         return HdfEventWriter(self)
 
     def event_iter(self, iterable: Iterable[IterItem]
