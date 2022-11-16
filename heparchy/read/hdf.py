@@ -8,7 +8,6 @@ formatted HDF5 files.
 from __future__ import annotations
 from pathlib import Path
 from os.path import basename
-from copy import deepcopy
 from functools import cached_property
 from collections.abc import Mapping
 from typing import (
@@ -19,7 +18,7 @@ import numpy as np
 import h5py
 from h5py import AttributeManager, Group, Dataset
 
-from heparchy.utils import event_key_format, deprecated
+from heparchy.utils import event_key_format, deprecated, chunk_key_format
 from .base import ReaderBase, EventReaderBase, ProcessReaderBase
 from heparchy.annotate import (
         IntVector, HalfIntVector, DoubleVector, BoolVector, AnyVector,
@@ -356,7 +355,10 @@ class HdfEventReader(EventReaderBase):
 
     def copy(self) -> HdfEventReader:
         """Returns a deep copy of the event object."""
-        return deepcopy(self)
+        new_evt = self.__class__()
+        new_evt._name = self._name
+        new_evt._grp = self._grp
+        return new_evt
 
 
 @_export
@@ -422,22 +424,32 @@ class HdfProcessReader(ProcessReaderBase):
             raise KeyError(f"{key} is not a process")
         self._grp: Group = grp
         self._meta: MetaDictType = dict(file_obj._buffer[key].attrs)
+        evts_per_chunk = file_obj._buffer.attrs["evts_per_chunk"]
+        if not isinstance(evts_per_chunk, np.integer):
+            raise ValueError("Error reading metadata.")
+        self._evts_per_chunk = int(evts_per_chunk)
         self.custom_meta: MapReader[Any] = MapReader(self, "_grp", _meta_iter)
 
     def __len__(self) -> int:
         return int(self._meta["num_evts"])
 
     def __iter__(self) -> Iterator[HdfEventReader]:
-        self._evt_gen = (self[i] for i in range(len(self)))
-        return self
-
-    def __next__(self) -> HdfEventReader:
-        return next(self._evt_gen)
+        evt: Group
+        for evt_chunk in self._grp.values():
+            for name, evt in evt_chunk.items():
+                self._evt._name = name
+                self._evt._grp = evt
+                yield self._evt
 
     def __getitem__(self, evt_num: int) -> HdfEventReader:
-        evt_name = event_key_format(evt_num)
+        chunk_idx, evt_idx = divmod(evt_num, self._evts_per_chunk)
+        evt_name = event_key_format(evt_idx, self._evts_per_chunk)
+        chunk_name = chunk_key_format(chunk_idx)
         self._evt._name = evt_name
-        evt_grp = self._grp[evt_name]
+        evt_chunk = self._grp[chunk_name]
+        if not isinstance(evt_chunk, Group):
+            raise ValueError
+        evt_grp = evt_chunk[evt_name]
         if not isinstance(evt_grp, Group):
             raise ValueError
         self._evt._grp = evt_grp
