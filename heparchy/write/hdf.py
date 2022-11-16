@@ -773,10 +773,15 @@ class HdfWriter(WriterBase):
     path : Path | str
         Filepath for output.
     compression : Compression | str
-        Supports "gzip" or "lzf" compression for datasets.
+        Supports "gzip" or "lzf" compression for datasets. Default is
+        gzip.
     compression_level : int, optional
         Integer between 1 - 9 setting gzip compression factor. Ignored
-        if compression type is lzf.
+        if compression type is lzf. Default is 4.
+    evts_per_chunk : int
+        Number of events which should be grouped into a chunk. Grouping
+        the events vastly improves read speed for processes which store
+        large numbers of events, _eg._ 1e+5 or more. Default is 1000.
 
     Examples
     --------
