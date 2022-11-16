@@ -1,15 +1,20 @@
-import numpy as np
-
+import math
 import warnings
 from functools import wraps
 from typing import Callable, Any
 
 import typicle
+import numpy as np
 from heparchy.annotate import AnyVector, DoubleVector, IntVector
 
 
-def event_key_format(evt_num: int) -> str:
-    return f"event_{evt_num:09}"
+def event_key_format(evt_num: int, evts_per_chunk: int) -> str:
+    pad_len = math.ceil(math.log10(evts_per_chunk))
+    return f"evt-{evt_num:0{pad_len}}"
+
+
+def chunk_key_format(chunk_num: int) -> str:
+    return f"evt-set-{chunk_num:06}"
 
 
 def deprecated(func: Callable[..., Any]) -> Callable[..., Any]:

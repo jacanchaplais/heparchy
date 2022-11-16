@@ -258,8 +258,8 @@ class HdfEventWriter(EventWriterBase):
         self.custom_meta: MapWriter[Any]
 
     def __enter__(self: HdfEventWriter) -> HdfEventWriter:
-        self._grp = self._proc._grp.create_group(
-                event_key_format(self._idx))
+        self._grp = self._proc._grp.create_group(event_key_format(
+            self._idx, self._proc._file_obj._evts_per_chunk))
         self._custom_grp = self._grp.create_group("custom")
         self._mask_grp = self._grp.create_group("masks")
         self.masks = MapWriter(self, _mask_setter)
@@ -793,6 +793,7 @@ class HdfWriter(WriterBase):
             path: Union[Path, str],
             compression: Union[str, Compression] = Compression.GZIP,
             compression_level: Optional[int] = 4,
+            evts_per_chunk: int = 1000,
             ) -> None:
         self.path = Path(path)
         self._buffer: File
@@ -802,6 +803,7 @@ class HdfWriter(WriterBase):
         if compression is Compression.LZF:
             compression_level = None
         self._cmprs_lvl = compression_level
+        self._evts_per_chunk = evts_per_chunk
 
     def __enter__(self: HdfWriter) -> HdfWriter:
         self._buffer = h5py.File(self.path, 'w', libver='latest')
@@ -812,6 +814,7 @@ class HdfWriter(WriterBase):
         self._buffer.attrs["version_tuple"] = tuple(
                 map(str, hrc.__version_tuple__))
         self._buffer.attrs["version"] = hrc.__version__
+        self._buffer.attrs["evts_per_chunk"] = self._evts_per_chunk
         self._buffer.close()
 
     def new_process(self, name: str) -> HdfProcessWriter:
