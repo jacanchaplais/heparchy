@@ -13,4 +13,5 @@ from . import hdf
 from .hdf import *
 
 
-__all__ = hdf.__all__.copy()
+__all__ = []
+__all__.extend(hdf.__all__)
