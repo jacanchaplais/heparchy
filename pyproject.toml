@@ -4,3 +4,30 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools_scm]
 write_to = "heparchy/_version.py"
+
+[tool.mypy]
+mypy_path = "heparchy"
+check_untyped_defs = true
+disallow_any_generics = true
+ignore_missing_imports = true
+no_implicit_optional = true
+show_error_codes = true
+strict_equality = true
+warn_redundant_casts = true
+warn_return_any = true
+warn_unreachable = true
+warn_unused_configs = true
+no_implicit_reexport = true
+
+[tool.pyright]
+include = ["heparchy"]
+exclude = [
+    "**/__pycache__",
+    "heparchy/typestubs"
+]
+defineConstant = { DEBUG = true }
+stubPath = "heparchy/stubs"
+reportMissingImports = true
+reportMissingTypeStubs = false
+pythonVersion = "3.9"
+pythonPlatform = "Linux"
