@@ -20,7 +20,7 @@ import h5py
 from h5py import Group, File
 
 import heparchy as hrc
-from heparchy.utils import deprecated, event_key_format
+from heparchy.utils import deprecated, event_key_format, chunk_key_format
 from .base import WriterBase, ProcessWriterBase, EventWriterBase
 from heparchy.annotate import (
         IntVector, HalfIntVector, DoubleVector, BoolVector, AnyVector)
@@ -625,8 +625,8 @@ class HdfProcessWriter(ProcessWriterBase):
     def _evtgrp_iter(self):
         chunk = 0
         while True:
-            grp = self._parent.create_group(f"{chunk:03}")
-            for i in range(1000):
+            grp = self._parent.create_group(chunk_key_format(chunk))
+            for i in range(self._file_obj._evts_per_chunk):
                 yield grp
             chunk = chunk + 1
 
@@ -639,7 +639,7 @@ class HdfProcessWriter(ProcessWriterBase):
     def __exit__(self, exc_type, exc_value, exc_traceback) -> None:
         # count all of the events and write to attribute
         self._grp.attrs["custom_meta_keys"] = self.custom_meta._flush()
-        self._grp.attrs["num_evts"] = self._evt_idx
+        self._parent.attrs["num_evts"] = self._evt_idx
 
     @deprecated
     def set_string(self, proc_str: str) -> None:

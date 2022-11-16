@@ -9,8 +9,9 @@ from heparchy.annotate import AnyVector, DoubleVector, IntVector
 
 
 def event_key_format(evt_num: int, evts_per_chunk: int) -> str:
+    evt_idx = evt_num % evts_per_chunk
     pad_len = math.ceil(math.log10(evts_per_chunk))
-    return f"evt-{evt_num:0{pad_len}}"
+    return f"evt-{evt_idx:0{pad_len}}"
 
 
 def chunk_key_format(chunk_num: int) -> str:

@@ -416,6 +416,17 @@ class HdfProcessReader(ProcessReaderBase):
             (1300.0, "GeV")
             semileptonic
     
+    Notes
+    -----
+    When implicitly iterating over this object (as in a for loop), the
+    order of event retrieval will _generally_ follow the numerical order
+    of the events, but this is not guaranteed. The iterator is based on
+    HDF5's underlying B-tree structure, and will iterate in
+    _native order_, _ie._ events will be read as quickly as possible.
+    Native ordering does not change unless the file is modified, so the
+    implicit iterator is consistent. However, if you require data to be
+    retrieved in numerical order, rather than native order, use explicit
+    indexing (as in the example above).
     """
     def __init__(self, file_obj: HdfReader, key: str) -> None:
         self._evt = HdfEventReader()
@@ -423,7 +434,7 @@ class HdfProcessReader(ProcessReaderBase):
         if not isinstance(grp, Group):
             raise KeyError(f"{key} is not a process")
         self._grp: Group = grp
-        self._meta: MetaDictType = dict(file_obj._buffer[key].attrs)
+        self._meta: MetaDictType = dict(grp.attrs)
         evts_per_chunk = file_obj._buffer.attrs["evts_per_chunk"]
         if not isinstance(evts_per_chunk, np.integer):
             raise ValueError("Error reading metadata.")
@@ -434,7 +445,6 @@ class HdfProcessReader(ProcessReaderBase):
         return int(self._meta["num_evts"])
 
     def __iter__(self) -> Iterator[HdfEventReader]:
-        evt: Group
         for evt_chunk in self._grp.values():
             for name, evt in evt_chunk.items():
                 self._evt._name = name
