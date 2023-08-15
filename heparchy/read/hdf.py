@@ -6,49 +6,46 @@ Defines the data structures to open and iterate through heparchy
 formatted HDF5 files.
 """
 from __future__ import annotations
-from pathlib import Path
-from os.path import basename
-from functools import cached_property
+
+import typing as ty
 from collections.abc import Mapping
-from typing import (
-        Any, List, Dict, Sequence, Type, Iterator, Union, Set,
-        TypeVar, Callable, Generic, Tuple, Optional)
+from functools import cached_property
+from os.path import basename
+from pathlib import Path
 
-import numpy as np
 import h5py
-from h5py import AttributeManager, Group, Dataset
+import numpy as np
+from h5py import AttributeManager, Dataset, Group
 
-from heparchy.utils import event_key_format, deprecated, chunk_key_format
-from .base import ReaderBase, EventReaderBase, ProcessReaderBase
-from heparchy.annotate import (
-        IntVector, HalfIntVector, DoubleVector, BoolVector, AnyVector,
-        DataType)
+from heparchy.utils import chunk_key_format, deprecated, event_key_format
 
+from . import base
 
-__all__: List[str] = []
-
-
-def _export(procedure: ExportType) -> ExportType:
-    __all__.append(procedure.__name__)
-    return procedure
+__all__ = [
+    "ReadOnlyError",
+    "MapReader",
+    "HdfEventReader",
+    "HdfProcessReader",
+    "HdfReader",
+]
 
 
 _NOT_NUMPY_ERR = ValueError("Stored data type is corrupted.")
 _NO_EVENT_ERR = AttributeError("Event reader not pointing to event.")
-_BUILTIN_PROPS: Set[str] = set()
+_BUILTIN_PROPS: ty.Set[str] = set()
 _BUILTIN_METADATA = {  # TODO: work out non-hardcoded
     "HdfEventReader": {"num_pcls", "mask_keys"},
-    "HdfProcessReader": {"signal_pdgs", "process", "com_e", "e_unit"}
-    }
+    "HdfProcessReader": {"signal_pdgs", "process", "com_e", "e_unit"},
+}
 
-MetaDictType = Dict[str, Union[str, int, float, bool, AnyVector]]
-ReaderType = Union["HdfEventReader", "HdfProcessReader"]
-ExportType = TypeVar("ExportType", Callable, Type)
-PropMethod = TypeVar("PropMethod", bound=Callable)
-MapValue = TypeVar("MapValue")
+MetaDictType = ty.Dict[str, ty.Union[str, int, float, bool, base.AnyVector]]
+ReaderType = ty.Union["HdfEventReader", "HdfProcessReader"]
+ExportType = ty.TypeVar("ExportType", ty.Callable, ty.Type)
+DataType = ty.TypeVar("DataType")
+PropMethod = ty.TypeVar("PropMethod", bound=ty.Callable)
+MapValue = ty.TypeVar("MapValue")
 
 
-@_export
 class ReadOnlyError(RuntimeError):
     """Raised when trying to write to read-only data.
     :group: hepread
@@ -60,30 +57,27 @@ def _reg_event_builtin(func: PropMethod) -> PropMethod:
     return func
 
 
-def _stored_keys(attrs: AttributeManager, key_attr_name: str) -> Iterator[str]:
+def _stored_keys(attrs: AttributeManager, key_attr_name: str) -> ty.Iterator[str]:
     key_ds = attrs[key_attr_name]
     if not isinstance(key_ds, np.ndarray):
         raise _NOT_NUMPY_ERR
-    for name in tuple(key_ds):
-        yield name
+    yield from tuple(key_ds)
 
 
-def _grp_key_iter(reader: Group) -> Iterator[str]:
+def _grp_key_iter(reader: Group) -> ty.Iterator[str]:
     yield from reader.keys()
 
 
-def _meta_iter(reader: Group) -> Iterator[str]:
+def _meta_iter(reader: Group) -> ty.Iterator[str]:
     key_attr_name = "custom_meta_keys"
     if key_attr_name not in reader.attrs:
         names = set(reader.attrs.keys())
-        for name in (names - _BUILTIN_METADATA[reader.__class__.__name__]):
-            yield name
+        yield from names - _BUILTIN_METADATA[reader.__class__.__name__]
     else:
         yield from _stored_keys(reader.attrs, key_attr_name)
 
 
-@_export
-class MapReader(Generic[MapValue], Mapping[str, MapValue]):
+class MapReader(ty.Generic[MapValue], Mapping[str, MapValue]):
     """Read-only dictionary-like interface to user-named heparchy
     datasets.
 
@@ -110,10 +104,13 @@ class MapReader(Generic[MapValue], Mapping[str, MapValue]):
     iteration over keys and values, subscriptable access to datasets,
     etc.
     """
-    def __init__(self,
-                 reader: ReaderType,
-                 grp_attr_name: str,
-                 iter_func: Callable[..., Iterator[str]]) -> None:
+
+    def __init__(
+        self,
+        reader: ReaderType,
+        grp_attr_name: str,
+        iter_func: ty.Callable[..., ty.Iterator[str]],
+    ) -> None:
         self._reader = reader
         self._grp_attr_name = grp_attr_name
         self._iter_func = iter_func
@@ -124,7 +121,7 @@ class MapReader(Generic[MapValue], Mapping[str, MapValue]):
 
     def __repr__(self) -> str:
         dset_repr = "<Read-Only Data>"
-        kv = ", ".join(map(lambda k: f"\'{k}\': {dset_repr}", self))
+        kv = ", ".join(map(lambda k: f"'{k}': {dset_repr}", self))
         return "{" + f"{kv}" + "}"
 
     def __len__(self) -> int:
@@ -140,29 +137,32 @@ class MapReader(Generic[MapValue], Mapping[str, MapValue]):
             raise _NOT_NUMPY_ERR
         return data[...]  # type: ignore
 
-    def __setitem__(self, name: str, data: MapValue) -> None:
+    def __setitem__(self, name: str, data: MapValue) -> ty.NoReturn:
         raise ReadOnlyError("Value is read-only")
 
-    def __delitem__(self, name: str) -> None:
+    def __delitem__(self, name: str) -> ty.NoReturn:
         raise ReadOnlyError("Value is read-only")
 
-    def __iter__(self) -> Iterator[str]:
+    def __iter__(self) -> ty.Iterator[str]:
         yield from self._iter_func(self._grp)
 
 
-def _type_error_str(data: Any, dtype: type) -> str:
-    return ("Type mismatch: retrieved value should be of "
-            f"type {dtype}, found instance of {type(data)}")
+def _type_error_str(data: ty.Any, dtype: type) -> str:
+    return (
+        "Type mismatch: retrieved value should be of "
+        f"type {dtype}, found instance of {type(data)}"
+    )
 
 
-def _check_type(data: Any, dtype: Type[DataType]) -> DataType:
+def _check_type(data: ty.Any, dtype: ty.Type[DataType]) -> DataType:
     if not isinstance(data, dtype):
         raise TypeError(_type_error_str(data, dtype))
     return data
 
 
 def _format_array_dict(
-        keys: Sequence[str], in_dict: Dict[str, Any]) -> Dict[str, AnyVector]:
+    keys: ty.Sequence[str], in_dict: ty.Dict[str, ty.Any]
+) -> ty.Dict[str, base.AnyVector]:
     array_dict = dict()
     for key in keys:
         val = in_dict[key][...]
@@ -172,8 +172,7 @@ def _format_array_dict(
     return array_dict
 
 
-@_export
-class HdfEventReader(EventReaderBase):
+class HdfEventReader(base.EventReaderBase):
     """A heparchy event reader object.
 
     :group: hepread
@@ -216,9 +215,10 @@ class HdfEventReader(EventReaderBase):
         Read-only dictionary-like interface to access user-defined
         metadata on the event.
     """
+
     def __init__(self) -> None:
-        self.__name: Optional[str] = None
-        self.__grp: Optional[Group] = None
+        self.__name: ty.Optional[str] = None
+        self.__grp: ty.Optional[Group] = None
         self._custom_grp: Group
         self._mask_grp: Group
 
@@ -254,14 +254,14 @@ class HdfEventReader(EventReaderBase):
 
     @property
     def count(self) -> int:
-        value = self._grp.attrs['num_pcls']
+        value = self._grp.attrs["num_pcls"]
         if not isinstance(value, np.integer):
             raise _NOT_NUMPY_ERR
         return int(value)
 
     @property  # type: ignore
     @_reg_event_builtin
-    def edges(self) -> AnyVector:
+    def edges(self) -> base.VoidVector:
         data = self._grp["edges"]
         if not isinstance(data, Dataset):
             raise ValueError("Stored data is corrupted")
@@ -269,89 +269,89 @@ class HdfEventReader(EventReaderBase):
 
     @property  # type: ignore
     @_reg_event_builtin
-    def edge_weights(self) -> DoubleVector:
-        data = self._grp['edge_weights']
+    def edge_weights(self) -> base.DoubleVector:
+        data = self._grp["edge_weights"]
         if not isinstance(data, Dataset):
             raise _NOT_NUMPY_ERR
         return data[...]
 
     @property  # type: ignore
     @_reg_event_builtin
-    def pmu(self) -> AnyVector:
-        data = self._grp['pmu']
+    def pmu(self) -> base.VoidVector:
+        data = self._grp["pmu"]
         if not isinstance(data, Dataset):
             raise _NOT_NUMPY_ERR
         return data[...]
 
     @property  # type: ignore
     @_reg_event_builtin
-    def color(self) -> AnyVector:
-        data = self._grp['color']
+    def color(self) -> base.VoidVector:
+        data = self._grp["color"]
         if not isinstance(data, Dataset):
             raise _NOT_NUMPY_ERR
         return data[...]
 
     @property  # type: ignore
     @_reg_event_builtin
-    def pdg(self) -> IntVector:
-        data = self._grp['pdg']
+    def pdg(self) -> base.IntVector:
+        data = self._grp["pdg"]
         if not isinstance(data, Dataset):
             raise _NOT_NUMPY_ERR
         return data[...]
 
     @property  # type: ignore
     @_reg_event_builtin
-    def status(self) -> HalfIntVector:
-        data = self._grp['status']
+    def status(self) -> base.HalfIntVector:
+        data = self._grp["status"]
         if not isinstance(data, Dataset):
             raise _NOT_NUMPY_ERR
         return data[...]
 
     @property  # type: ignore
     @_reg_event_builtin
-    def helicity(self) -> HalfIntVector:
-        data = self._grp['helicity']
+    def helicity(self) -> base.HalfIntVector:
+        data = self._grp["helicity"]
         if not isinstance(data, Dataset):
             raise _NOT_NUMPY_ERR
         return data[...]
 
     @property  # type: ignore
     @deprecated
-    def final(self) -> BoolVector:
+    def final(self) -> base.BoolVector:
         return self.masks["final"]
 
     @property
-    def available(self) -> List[str]:
+    def available(self) -> ty.List[str]:
         dataset_names = list()
         self._grp.visit(lambda name: dataset_names.append(name))
         return dataset_names
 
     @deprecated
-    def mask(self, name: str) -> BoolVector:
+    def mask(self, name: str) -> base.BoolVector:
         """Returns a boolean mask stored with the provided name."""
         return self.masks[name]
 
     @cached_property
-    def masks(self) -> MapReader[BoolVector]:
-        return MapReader[BoolVector](self, "_mask_grp", _grp_key_iter)
+    def masks(self) -> MapReader[base.BoolVector]:
+        return MapReader[base.BoolVector](self, "_mask_grp", _grp_key_iter)
 
     @deprecated
-    def get_custom(self, name: str) -> AnyVector:
+    def get_custom(self, name: str) -> base.AnyVector:
         """Returns a custom dataset stored with the provided name."""
         return self.custom[name]
-    
+
     @cached_property
-    def custom(self) -> MapReader[AnyVector]:
-        return MapReader[AnyVector](self, "_custom_grp", _grp_key_iter)
+    def custom(self) -> MapReader[base.AnyVector]:
+        return MapReader[base.AnyVector](self, "_custom_grp", _grp_key_iter)
 
     @deprecated
-    def get_custom_meta(self, name: str) -> Any:
+    def get_custom_meta(self, name: str) -> ty.Any:
         """Returns custom metadata stored with the provided name."""
         return self._grp.attrs[name]
 
     @cached_property
-    def custom_meta(self) -> MapReader[Any]:
-        return MapReader[Any](self, "_grp", _meta_iter)
+    def custom_meta(self) -> MapReader[ty.Any]:
+        return MapReader[ty.Any](self, "_grp", _meta_iter)
 
     def copy(self) -> HdfEventReader:
         """Returns a deep copy of the event object."""
@@ -361,8 +361,7 @@ class HdfEventReader(EventReaderBase):
         return new_evt
 
 
-@_export
-class HdfProcessReader(ProcessReaderBase):
+class HdfProcessReader(base.ProcessReaderBase):
     """A heparchy process object. This is a numerically subscriptable
     iterator.
 
@@ -415,7 +414,7 @@ class HdfProcessReader(ProcessReaderBase):
             [25, 5, -5]
             (1300.0, "GeV")
             semileptonic
-    
+
     Notes
     -----
     When implicitly iterating over this object (as in a for loop), the
@@ -428,6 +427,7 @@ class HdfProcessReader(ProcessReaderBase):
     retrieved in numerical order, rather than native order, use explicit
     indexing (as in the example above).
     """
+
     def __init__(self, file_obj: HdfReader, key: str) -> None:
         self._evt = HdfEventReader()
         grp = file_obj._buffer[key]
@@ -439,12 +439,12 @@ class HdfProcessReader(ProcessReaderBase):
         if not isinstance(evts_per_chunk, np.integer):
             raise ValueError("Error reading metadata.")
         self._evts_per_chunk = int(evts_per_chunk)
-        self.custom_meta: MapReader[Any] = MapReader(self, "_grp", _meta_iter)
+        self.custom_meta: MapReader[ty.Any] = MapReader(self, "_grp", _meta_iter)
 
     def __len__(self) -> int:
         return int(self._meta["num_evts"])
 
-    def __iter__(self) -> Iterator[HdfEventReader]:
+    def __iter__(self) -> ty.Iterator[HdfEventReader]:
         for evt_chunk in self._grp.values():
             for name, evt in evt_chunk.items():
                 self._evt._name = name
@@ -481,26 +481,27 @@ class HdfProcessReader(ProcessReaderBase):
 
     @property  # type: ignore
     @deprecated
-    def decay(self) -> Dict[str, IntVector]:
+    def decay(self) -> ty.Dict[str, base.IntVector]:
         return _format_array_dict(("in_pcls", "out_pcls"), self._meta)
 
     @property
-    def signal_pdgs(self) -> IntVector:
+    def signal_pdgs(self) -> base.IntVector:
         return _check_type(self._meta["signal_pdgs"], np.ndarray)
 
     @property
-    def com_energy(self) -> Tuple[float, str]:
-        return (_check_type(self._meta['com_e'], float),
-                _check_type(self._meta['e_unit'], str))
+    def com_energy(self) -> ty.Tuple[float, str]:
+        return (
+            _check_type(self._meta["com_e"], float),
+            _check_type(self._meta["e_unit"], str),
+        )
 
     @deprecated
-    def get_custom_meta(self, name: str) -> Any:
+    def get_custom_meta(self, name: str) -> ty.Any:
         """Returns user-defined metadata stored under the give name."""
         return self._meta[name]
 
 
-@_export
-class HdfReader(ReaderBase):
+class HdfReader(base.ReaderBase):
     """Create a new heparchy hdf5 file object with read access.
     Processes stored within are accessed via string subscripting.
 
@@ -520,11 +521,12 @@ class HdfReader(ReaderBase):
         >>>     ...
 
     """
-    def __init__(self, path: Path) -> None:
+
+    def __init__(self, path: ty.Union[Path, str]) -> None:
         self.path = path
 
     def __enter__(self) -> HdfReader:
-        self._buffer = h5py.File(self.path, 'r')
+        self._buffer = h5py.File(self.path, "r")
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback) -> None:

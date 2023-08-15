@@ -1,15 +1,17 @@
 from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import List, Any, Dict
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
 
-
-DoubleVector = npt.NDArray[np.float64]
 IntVector = npt.NDArray[np.int32]
 HalfIntVector = npt.NDArray[np.int16]
+DoubleVector = npt.NDArray[np.float64]
 BoolVector = npt.NDArray[np.bool_]
+AnyVector = npt.NDArray[Any]
+VoidVector = npt.NDArray[np.void]
 
 
 class EventReaderBase(ABC):
@@ -50,7 +52,7 @@ class EventReaderBase(ABC):
 
     @property
     @abstractmethod
-    def available(self) -> List[str]:
+    def available(self) -> list[str]:
         """Provides list of all dataset names in event."""
 
     @abstractmethod
@@ -78,7 +80,7 @@ class ProcessReaderBase(ABC):
 
     @property
     @abstractmethod
-    def decay(self) -> Dict[str, IntVector]:
+    def decay(self) -> dict[str, IntVector]:
         """Returns dictionary with two entries, describing the hard
         interaction for this process.
 
