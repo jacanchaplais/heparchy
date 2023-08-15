@@ -6,45 +6,41 @@ Provides the interface to write HEP data to the heparchy HDF5 format.
 """
 from __future__ import annotations
 
+import functools as fn
+import itertools as it
+import typing as ty
 import warnings
-from collections.abc import Iterable, MutableMapping
 from enum import Enum
-from functools import partial
 from pathlib import Path
-from typing import Any, Callable, Generic, Iterator, Sequence, Type, TypeVar, Union
 
 import h5py
+import numpy as np
 import numpy.typing as npt
 from h5py import File, Group
 
 import heparchy as hrc
-from heparchy.annotate import (
-    AnyVector,
-    BoolVector,
-    DoubleVector,
-    HalfIntVector,
-    IntVector,
-)
 from heparchy.utils import chunk_key_format, deprecated, event_key_format
 
-from .base import EventWriterBase, ProcessWriterBase, WriterBase
+from . import base
 
-__all__: list[str] = []
+__all__ = [
+    "Compression",
+    "WriteOnlyError",
+    "OverwriteWarning",
+    "MapWriter",
+    "HdfEventWriter",
+    "HdfProcessWriter",
+    "HdfWriter",
+]
 
 _WRITE_ONLY_MSG = "Attribute is write-only."
 
-MapGeneric = TypeVar("MapGeneric")
-IterItem = TypeVar("IterItem")
-WriterType = Union["HdfEventWriter", "HdfProcessWriter"]
-ExportType = TypeVar("ExportType", Callable, Type)
+MapGeneric = ty.TypeVar("MapGeneric")
+IterItem = ty.TypeVar("IterItem")
+WriterType = ty.Union["HdfEventWriter", "HdfProcessWriter"]
+ExportType = ty.TypeVar("ExportType", ty.Callable, ty.Type)
 
 
-def _export(procedure: ExportType) -> ExportType:
-    __all__.append(procedure.__name__)
-    return procedure
-
-
-@_export
 class Compression(Enum):
     """Sets the compression algorithm used to store the datasets.
     :group: hepwrite
@@ -54,14 +50,12 @@ class Compression(Enum):
     GZIP = "gzip"
 
 
-@_export
 class WriteOnlyError(RuntimeError):
     """Raised when trying to access write-only data.
     :group: hepwrite
     """
 
 
-@_export
 class OverwriteWarning(RuntimeWarning):
     """A warning to be raised when a user writes a piece of data twice.
     :group: hepwrite
@@ -71,7 +65,7 @@ class OverwriteWarning(RuntimeWarning):
 def _mk_dset(
     grp: Group,
     name: str,
-    data: AnyVector,
+    data: base.AnyVector,
     shape: tuple,
     dtype: npt.DTypeLike,
     compression: Compression,
@@ -89,7 +83,7 @@ def _mk_dset(
             f"Input data shape {data.shape} "
             f"incompatible with dataset shape {shape}."
         )
-    kwargs: dict[str, Any] = dict(
+    kwargs: dict[str, ty.Any] = dict(
         name=name,
         shape=shape,
         dtype=dtype,
@@ -103,7 +97,7 @@ def _mk_dset(
     dset[...] = data
 
 
-def _mask_setter(writer: WriterType, name: str, data: BoolVector) -> None:
+def _mask_setter(writer: WriterType, name: str, data: base.BoolVector) -> None:
     if not isinstance(writer, HdfEventWriter):
         raise ValueError("Can't set masks on processes")
     writer._set_num_pcls(data)
@@ -112,13 +106,13 @@ def _mask_setter(writer: WriterType, name: str, data: BoolVector) -> None:
         name=name,
         data=data,
         shape=data.shape,
-        dtype=writer._types.bool,
+        dtype="<?",
         compression=writer._proc._file_obj._cmprs,
         compression_level=writer._proc._file_obj._cmprs_lvl,
     )
 
 
-def _custom_setter(writer: WriterType, name: str, data: AnyVector) -> None:
+def _custom_setter(writer: WriterType, name: str, data: base.AnyVector) -> None:
     if not isinstance(writer, HdfEventWriter):
         raise ValueError("Can't set custom datasets on processes")
     _mk_dset(
@@ -132,12 +126,11 @@ def _custom_setter(writer: WriterType, name: str, data: AnyVector) -> None:
     )
 
 
-def _meta_setter(writer: WriterType, name: str, data: Any) -> None:
+def _meta_setter(writer: WriterType, name: str, data: ty.Any) -> None:
     writer._grp.attrs[name] = data
 
 
-@_export
-class MapWriter(Generic[MapGeneric], MutableMapping[str, MapGeneric]):
+class MapWriter(ty.Generic[MapGeneric], ty.MutableMapping[str, MapGeneric]):
     """Provides a dictionary-like interface for writing user-named
     datasets or metadata.
 
@@ -167,7 +160,7 @@ class MapWriter(Generic[MapGeneric], MutableMapping[str, MapGeneric]):
     def __init__(
         self,
         writer: WriterType,
-        setter_func: Callable[[WriterType, str, MapGeneric], None],
+        setter_func: ty.Callable[[WriterType, str, MapGeneric], None],
     ) -> None:
         self.writer = writer
         self._names: set[str] = set()
@@ -195,7 +188,7 @@ class MapWriter(Generic[MapGeneric], MutableMapping[str, MapGeneric]):
             return
         del self.writer._grp[name]
 
-    def __iter__(self) -> Iterator[str]:
+    def __iter__(self) -> ty.Iterator[str]:
         yield from self._names
 
     def _flush(self) -> tuple[str, ...]:
@@ -204,8 +197,7 @@ class MapWriter(Generic[MapGeneric], MutableMapping[str, MapGeneric]):
         return data
 
 
-@_export
-class HdfEventWriter(EventWriterBase):
+class HdfEventWriter(base.EventWriterBase):
     """Context manager interface to create and write events.
 
     :group: hepwrite
@@ -253,7 +245,6 @@ class HdfEventWriter(EventWriterBase):
     """
 
     __slots__ = (
-        "_types",
         "__grp_obj",
         "_idx",
         "_num_pcls",
@@ -265,9 +256,6 @@ class HdfEventWriter(EventWriterBase):
     )
 
     def __init__(self, proc: HdfProcessWriter) -> None:
-        from typicle import Types
-
-        self._types = Types()
         self._proc = proc  # pointer to parent group obj
         self._idx = proc._evt_idx  # index for current event
         self._num_pcls: int | None = None
@@ -275,9 +263,9 @@ class HdfEventWriter(EventWriterBase):
         self._grp: Group
         self._custom_grp: Group
         self._mask_grp: Group
-        self.masks: MapWriter[BoolVector]
-        self.custom: MapWriter[AnyVector]
-        self.custom_meta: MapWriter[Any]
+        self.masks: MapWriter[base.BoolVector]
+        self.custom: MapWriter[base.AnyVector]
+        self.custom_meta: MapWriter[ty.Any]
 
     def __enter__(self: HdfEventWriter) -> HdfEventWriter:
         self._grp = self._proc._grp.create_group(
@@ -288,7 +276,7 @@ class HdfEventWriter(EventWriterBase):
         self.masks = MapWriter(self, _mask_setter)
         self.custom = MapWriter(self, _custom_setter)
         self.custom_meta = MapWriter(self, _meta_setter)
-        self._mk_dset = partial(
+        self._mk_dset = fn.partial(
             _mk_dset,
             grp=self._grp,
             compression=self._proc._file_obj._cmprs,
@@ -307,7 +295,7 @@ class HdfEventWriter(EventWriterBase):
         self._grp.attrs["custom_meta_keys"] = self.custom_meta._flush()
         self._proc._evt_idx += 1
 
-    def _set_num_pcls(self, data: AnyVector) -> None:
+    def _set_num_pcls(self, data: base.AnyVector) -> None:
         shape = data.shape
         num_pcls = shape[0]
 
@@ -324,25 +312,25 @@ class HdfEventWriter(EventWriterBase):
             return
 
     @property
-    def edges(self) -> AnyVector:
+    def edges(self) -> base.AnyVector:
         raise WriteOnlyError(_WRITE_ONLY_MSG)
 
     @edges.setter
-    def edges(self, data: AnyVector) -> None:
+    def edges(self, data: base.AnyVector) -> None:
         self._mk_dset(
             name="edges",
             data=data,
             shape=data.shape,
-            dtype=self._types.edge,
+            dtype=np.dtype([("src", "<i4"), ("dst", "<i4")]),
         )
         self._num_edges = len(data)
 
     @property
-    def edge_weights(self) -> DoubleVector:
+    def edge_weights(self) -> base.DoubleVector:
         raise WriteOnlyError(_WRITE_ONLY_MSG)
 
     @edge_weights.setter
-    def edge_weights(self, data: DoubleVector) -> None:
+    def edge_weights(self, data: base.DoubleVector) -> None:
         num_edges = self._num_edges
         num_weights = len(data)
         if (num_edges == 0) or (self._num_edges != num_weights):
@@ -354,154 +342,57 @@ class HdfEventWriter(EventWriterBase):
             name="edge_weights",
             data=data,
             shape=data.shape,
-            dtype=self._types.double,
+            dtype="<f8",
         )
-
-    @deprecated
-    def set_edges(
-        self,
-        data: AnyVector,
-        weights: DoubleVector | None = None,
-        strict_size: bool = True,
-    ) -> None:
-        """Write edge indices for event.
-
-        :group: hepwrite
-
-        Parameters
-        ----------
-        data : 2d array of ints
-            Each row contains a pair of in / out edge indices.
-        strict_size : bool
-            If True will assume number of edges = number of particles
-            (default: True).
-        """
-        if strict_size is True:
-            self._set_num_pcls(data)
-        if weights is not None:
-            num_edges = len(data)
-            num_weights = len(weights)
-            if num_edges != num_weights:
-                raise ValueError(
-                    f"Incompatible shapes. Number of edges = {num_edges} and "
-                    + f"number of weights = {num_weights}. Must be same size."
-                )
-            self._mk_dset(
-                name="edge_weights",
-                data=weights,
-                shape=weights.shape,
-                dtype=self._types.double,
-            )
-        self._mk_dset(
-            name="edges",
-            data=data,
-            shape=data.shape,
-            dtype=self._types.edge,
-        )
-
-    @deprecated
-    def set_pmu(self, data: AnyVector) -> None:
-        """Write 4-momentum for all particles to event.
-
-        :group: hepwrite
-
-        Parameters
-        ----------
-        data : 2d array of floats.
-            Each row contains momentum of one particle,
-            in order [px, py, pz, e].
-        """
-        self.pmu = data
 
     @property
-    def pmu(self) -> AnyVector:
+    def pmu(self) -> ty.NoReturn:
         raise WriteOnlyError(_WRITE_ONLY_MSG)
 
     @pmu.setter
-    def pmu(self, data: AnyVector) -> None:
+    def pmu(self, data: base.VoidVector) -> None:
         self._set_num_pcls(data)
         self._mk_dset(
             name="pmu",
             data=data,
             shape=data.shape,
-            dtype=self._types.pmu,
+            dtype=np.dtype(list(zip("xyze", it.repeat("<f8")))),
         )
 
-    @deprecated
-    def set_color(self, data: AnyVector) -> None:
-        """Write color / anticolor pairs for all particles to event.
-
-        :group: hepwrite
-
-        Parameters
-        ----------
-        data : 2d array of ints.
-            Each row contains color / anticolor values respectively.
-        """
-        self.color = data
-
     @property
-    def color(self) -> AnyVector:
+    def color(self) -> base.AnyVector:
         raise WriteOnlyError(_WRITE_ONLY_MSG)
 
     @color.setter
-    def color(self, data: AnyVector) -> None:
+    def color(self, data: base.AnyVector) -> None:
         self._set_num_pcls(data)
         self._mk_dset(
             name="color",
             data=data,
             shape=data.shape,
-            dtype=self._types.color,
+            dtype=np.dtype([("color", "<i4"), ("anticolor", "<i4")]),
         )
 
-    @deprecated
-    def set_pdg(self, data: IntVector) -> None:
-        """Pdg codes for all particles in event.
-
-        :group: hepwrite
-
-        Parameters
-        ----------
-        data : iterable or 1d numpy array
-            Iterable of ints containing pdg codes for every
-            particle in the event.
-        """
-        self.pdg = data
-
     @property
-    def pdg(self) -> IntVector:
+    def pdg(self) -> base.IntVector:
         raise WriteOnlyError(_WRITE_ONLY_MSG)
 
     @pdg.setter
-    def pdg(self, data: IntVector) -> None:
+    def pdg(self, data: base.IntVector) -> None:
         self._set_num_pcls(data)
         self._mk_dset(
             name="pdg",
             data=data,
             shape=(self._num_pcls,),
-            dtype=self._types.int,
+            dtype="<i4",
         )
 
-    @deprecated
-    def set_status(self, data: HalfIntVector) -> None:
-        """Write status codes for all particles to event.
-
-        :group: hepwrite
-
-        Parameters
-        ----------
-        data : iterable or 1d numpy array
-            Iterable of ints containing status codes for every
-            particle in the event.
-        """
-        self.status = data
-
     @property
-    def status(self) -> HalfIntVector:
+    def status(self) -> base.HalfIntVector:
         raise WriteOnlyError(_WRITE_ONLY_MSG)
 
     @status.setter
-    def status(self, data: HalfIntVector) -> None:
+    def status(self, data: base.HalfIntVector) -> None:
         self._set_num_pcls(data)
         self._mk_dset(
             name="status",
@@ -510,97 +401,22 @@ class HdfEventWriter(EventWriterBase):
             dtype="<i2",
         )
 
-    @deprecated
-    def set_helicity(self, data: HalfIntVector) -> None:
-        """Write helicity values for all particles to event.
-
-        :group: hepwrite
-
-        Parameters
-        ----------
-        data : iterable or 1d numpy array
-            Iterable of floats containing helicity values for every
-            particle in the event.
-        """
-        self.helicity = data
-
     @property
-    def helicity(self) -> HalfIntVector:
+    def helicity(self) -> base.HalfIntVector:
         raise WriteOnlyError(_WRITE_ONLY_MSG)
 
     @helicity.setter
-    def helicity(self, data: HalfIntVector) -> None:
+    def helicity(self, data: base.HalfIntVector) -> None:
         self._set_num_pcls(data)
         self._mk_dset(
             name="helicity",
             data=data,
             shape=(self._num_pcls,),
-            dtype=self._types.helicity,
+            dtype="<i2",
         )
 
-    @deprecated
-    def set_mask(self, name: str, data: BoolVector) -> None:
-        """Write bool mask for all particles in event.
 
-        :group: hepwrite
-
-        Parameters
-        ----------
-        data : iterable or 1d numpy array
-            Iterable of bools containing True / False values for
-            every particle in event.
-            Note: would also accept int iterable of 0s / 1s.
-
-        Notes
-        -----
-        Example use cases:
-            - identify particles from specific parent
-            - provide mask for rapidity and pT cuts
-            - if storing whole shower, identify final state
-        """
-        self.masks[name] = data
-
-    @deprecated
-    def set_custom_dataset(
-        self, name: str, data: AnyVector, dtype: npt.DTypeLike, strict_size: bool = True
-    ) -> None:
-        """Write a custom dataset to the event.
-
-        :group: hepwrite
-
-        Parameters
-        ----------
-        name : str
-            Handle used when reading the data.
-        data : nd numpy array
-            data to store.
-        dtype : valid string, numpy, or python data type
-            Type in which your data should be encoded for
-            storage.
-            Note: using little Endian for builtin datasets.
-        """
-        if strict_size is True:
-            self._set_num_pcls(data)
-        self.custom[name] = data
-
-    @deprecated
-    def set_custom_meta(self, name: str, metadata: Any) -> None:
-        """Store custom metadata to the event.
-
-        :group: hepwrite
-
-        Parameters
-        ----------
-        name : str
-            Handle to access the metadata at read time.
-        metadata : str, int, float, or iterables thereof
-            The data you wish to store.
-        """
-        self.custom_meta[name] = metadata
-
-
-@_export
-class HdfProcessWriter(ProcessWriterBase):
+class HdfProcessWriter(base.ProcessWriterBase):
     """Context manager interface to create and write processes.
 
     :group: hepwrite
@@ -643,7 +459,7 @@ class HdfProcessWriter(ProcessWriterBase):
         self._evt_idx = 0
         self._parent: Group
         self._grp: Group
-        self.custom_meta: MapWriter[Any]
+        self.custom_meta: MapWriter[ty.Any]
 
     def _evtgrp_iter(self):
         chunk = 0
@@ -688,7 +504,7 @@ class HdfProcessWriter(ProcessWriterBase):
         self._grp.attrs["process"] = value
 
     @deprecated
-    def set_decay(self, in_pcls: Sequence[int], out_pcls: Sequence[int]) -> None:
+    def set_decay(self, in_pcls: ty.Sequence[int], out_pcls: ty.Sequence[int]) -> None:
         """Writes the pdgids of incoming and outgoing particles to
         process metadata.
 
@@ -696,10 +512,10 @@ class HdfProcessWriter(ProcessWriterBase):
 
         Parameters
         ----------
-        in_pcls : tuple of ints
+        in_pcls : tuple[int, ...]
             pdgids of incoming particles.
             eg. for p p => (2212, 2212)
-        out_pcls : tuple of ints
+        out_pcls : tuple[int, ...]
             pdgids of outgoing particles.
             eg. for t t~ => (6, -6)
         """
@@ -707,11 +523,11 @@ class HdfProcessWriter(ProcessWriterBase):
         self._grp.attrs["out_pcls"] = out_pcls
 
     @property
-    def signal_pdgs(self) -> IntVector:
+    def signal_pdgs(self) -> base.IntVector:
         raise WriteOnlyError(_WRITE_ONLY_MSG)
 
     @signal_pdgs.setter
-    def signal_pdgs(self, value: Sequence[int]) -> None:
+    def signal_pdgs(self, value: ty.Sequence[int]) -> None:
         self._grp.attrs["signal_pdgs"] = value
 
     @deprecated
@@ -741,7 +557,7 @@ class HdfProcessWriter(ProcessWriterBase):
         self._grp.attrs["e_unit"] = value[1]
 
     @deprecated
-    def set_custom_meta(self, name: str, metadata: Any) -> None:
+    def set_custom_meta(self, name: str, metadata: ty.Any) -> None:
         """Store custom metadata to the process.
 
         :group: hepwrite
@@ -760,8 +576,8 @@ class HdfProcessWriter(ProcessWriterBase):
         return HdfEventWriter(self)
 
     def event_iter(
-        self, iterable: Iterable[IterItem]
-    ) -> Iterator[tuple[HdfEventWriter, IterItem]]:
+        self, iterable: ty.Iterable[IterItem]
+    ) -> ty.Iterator[tuple[HdfEventWriter, IterItem]]:
         """Wraps an iteratable object, returning a new iterator which
         yields a new writeable event object followed by the value
         obtained from the passed iterator.
@@ -785,17 +601,16 @@ class HdfProcessWriter(ProcessWriterBase):
                 yield event, value
 
 
-@_export
-class HdfWriter(WriterBase):
+class HdfWriter(base.WriterBase):
     """Create a new heparchy hdf5 file object with write access.
 
     :group: hepwrite
 
     Parameters
     ----------
-    path : Path | str
+    path : Path or str
         Filepath for output.
-    compression : Compression | str
+    compression : Compression or str
         Supports "gzip" or "lzf" compression for datasets. Default is
         gzip.
     compression_level : int, optional

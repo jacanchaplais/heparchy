@@ -523,7 +523,7 @@ class HdfReader(base.ReaderBase):
     """
 
     def __init__(self, path: ty.Union[Path, str]) -> None:
-        self.path = path
+        self.path = Path(path)
 
     def __enter__(self) -> HdfReader:
         self._buffer = h5py.File(self.path, "r")

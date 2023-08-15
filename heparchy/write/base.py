@@ -2,7 +2,14 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 import numpy as np
-from h5py import Group, File
+import numpy.typing as npt
+
+IntVector = npt.NDArray[np.int32]
+HalfIntVector = npt.NDArray[np.int16]
+DoubleVector = npt.NDArray[np.float64]
+BoolVector = npt.NDArray[np.bool_]
+AnyVector = npt.NDArray[Any]
+VoidVector = npt.NDArray[np.void]
 
 
 class EventWriterBase(ABC):
@@ -27,9 +34,9 @@ class EventWriterBase(ABC):
         pass
 
     @abstractmethod
-    def set_custom_dataset(
-            self, name: str, data: np.ndarray, dtype: Any) -> None:
+    def set_custom_dataset(self, name: str, data: np.ndarray, dtype: Any) -> None:
         pass
+
 
 class ProcessWriterBase(ABC):
     @abstractmethod
