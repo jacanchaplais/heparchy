@@ -4,8 +4,6 @@
 
 Provides the interface to write HEP data to the heparchy HDF5 format.
 """
-from __future__ import annotations
-
 import functools as fn
 import itertools as it
 import typing as ty
@@ -19,7 +17,7 @@ import numpy.typing as npt
 from h5py import File, Group
 
 import heparchy as hrc
-from heparchy.utils import chunk_key_format, deprecated, event_key_format
+from heparchy.utils import chunk_key_format, event_key_format
 
 from . import base
 
@@ -66,10 +64,10 @@ def _mk_dset(
     grp: Group,
     name: str,
     data: base.AnyVector,
-    shape: tuple,
+    shape: ty.Tuple[int, ...],
     dtype: npt.DTypeLike,
     compression: Compression,
-    compression_level: int | None,
+    compression_level: ty.Optional[int],
 ) -> None:
     """Generic dataset creation and population function.
     Wrap in methods exposed to the user interface.
@@ -138,7 +136,7 @@ class MapWriter(ty.Generic[MapGeneric], ty.MutableMapping[str, MapGeneric]):
 
     Parameters
     ----------
-    writer : HdfProcessWriter | HdfEventWriter
+    writer : HdfProcessWriter or HdfEventWriter
         The writer instance to which the MapWriter will be attached.
     setter_func : callable
         The strategy used to write the user-named data with the writer.
@@ -163,7 +161,7 @@ class MapWriter(ty.Generic[MapGeneric], ty.MutableMapping[str, MapGeneric]):
         setter_func: ty.Callable[[WriterType, str, MapGeneric], None],
     ) -> None:
         self.writer = writer
-        self._names: set[str] = set()
+        self._names: ty.Set[str] = set()
         self._setter_func = setter_func
 
     def __repr__(self) -> str:
@@ -191,36 +189,19 @@ class MapWriter(ty.Generic[MapGeneric], ty.MutableMapping[str, MapGeneric]):
     def __iter__(self) -> ty.Iterator[str]:
         yield from self._names
 
-    def _flush(self) -> tuple[str, ...]:
+    def _flush(self) -> ty.Tuple[str, ...]:
         data = tuple(self._names)
         self._names = set()
         return data
 
 
-class HdfEventWriter(base.EventWriterBase):
+class HdfEventWriter:
     """Context manager interface to create and write events.
 
     :group: hepwrite
 
     Attributes
     ----------
-    edges : numpy.ndarray[int]
-        A structured array providing edges for a graph representation,
-        with fields "in" and "out".
-    edge_weights : numpy.ndarray[double]
-        Weights attributed to each edge.
-    pmu : numpy.ndarray[double]
-        A structured array providing particle 4-momenta, with fields
-        "x", "y", "z", "e"
-    color : numpy.ndarray[int]
-        A structured array with fields "color" and "anti-color".
-    pdg : numpy.ndarray[int]
-        PDG codes providing the identity of every particle in the event.
-    status : numpy.ndarray[int]
-        Status codes, describing the reason for the generation of each
-        particle in the event.
-    helicity : numpy.ndarray[int]
-        Spin polarisations of every particle in the event.
     masks : MapWriter[numpy.ndarray[bool]]
         Write-only dictionary-like interface to set boolean masks
         over the particle datasets.
@@ -244,21 +225,10 @@ class HdfEventWriter(base.EventWriterBase):
 
     """
 
-    __slots__ = (
-        "__grp_obj",
-        "_idx",
-        "_num_pcls",
-        "_evt",
-        "masks",
-        "custom",
-        "custom_meta",
-        "_num_edges",
-    )
-
-    def __init__(self, proc: HdfProcessWriter) -> None:
+    def __init__(self, proc: "HdfProcessWriter") -> None:
         self._proc = proc  # pointer to parent group obj
         self._idx = proc._evt_idx  # index for current event
-        self._num_pcls: int | None = None
+        self._num_pcls: ty.Optional[int] = None
         self._num_edges = 0
         self._grp: Group
         self._custom_grp: Group
@@ -267,7 +237,7 @@ class HdfEventWriter(base.EventWriterBase):
         self.custom: MapWriter[base.AnyVector]
         self.custom_meta: MapWriter[ty.Any]
 
-    def __enter__(self: HdfEventWriter) -> HdfEventWriter:
+    def __enter__(self: "HdfEventWriter") -> "HdfEventWriter":
         self._grp = self._proc._grp.create_group(
             event_key_format(self._idx, self._proc._file_obj._evts_per_chunk)
         )
@@ -312,11 +282,14 @@ class HdfEventWriter(base.EventWriterBase):
             return
 
     @property
-    def edges(self) -> base.AnyVector:
+    def edges(self) -> ty.NoReturn:
+        """Structured array of COO edge representation of graph, with
+        fields 'src' and 'dst'.
+        """
         raise WriteOnlyError(_WRITE_ONLY_MSG)
 
     @edges.setter
-    def edges(self, data: base.AnyVector) -> None:
+    def edges(self, data: base.VoidVector) -> None:
         self._mk_dset(
             name="edges",
             data=data,
@@ -326,7 +299,8 @@ class HdfEventWriter(base.EventWriterBase):
         self._num_edges = len(data)
 
     @property
-    def edge_weights(self) -> base.DoubleVector:
+    def edge_weights(self) -> ty.NoReturn:
+        """Weights attributed to each edge."""
         raise WriteOnlyError(_WRITE_ONLY_MSG)
 
     @edge_weights.setter
@@ -347,6 +321,9 @@ class HdfEventWriter(base.EventWriterBase):
 
     @property
     def pmu(self) -> ty.NoReturn:
+        """Structured array providing particle 4-momenta, with fields
+        'x', 'y', 'z', 'e'.
+        """
         raise WriteOnlyError(_WRITE_ONLY_MSG)
 
     @pmu.setter
@@ -360,7 +337,8 @@ class HdfEventWriter(base.EventWriterBase):
         )
 
     @property
-    def color(self) -> base.AnyVector:
+    def color(self) -> ty.NoReturn:
+        """A structured array with fields 'color' and 'anti-color'."""
         raise WriteOnlyError(_WRITE_ONLY_MSG)
 
     @color.setter
@@ -374,7 +352,8 @@ class HdfEventWriter(base.EventWriterBase):
         )
 
     @property
-    def pdg(self) -> base.IntVector:
+    def pdg(self) -> ty.NoReturn:
+        """PDG codes identifying each particle in the event."""
         raise WriteOnlyError(_WRITE_ONLY_MSG)
 
     @pdg.setter
@@ -388,7 +367,10 @@ class HdfEventWriter(base.EventWriterBase):
         )
 
     @property
-    def status(self) -> base.HalfIntVector:
+    def status(self) -> ty.NoReturn:
+        """Status codes, describing the role of each particle in the
+        event.
+        """
         raise WriteOnlyError(_WRITE_ONLY_MSG)
 
     @status.setter
@@ -402,7 +384,8 @@ class HdfEventWriter(base.EventWriterBase):
         )
 
     @property
-    def helicity(self) -> base.HalfIntVector:
+    def helicity(self) -> ty.NoReturn:
+        """Spin polarisations of every particle in the event."""
         raise WriteOnlyError(_WRITE_ONLY_MSG)
 
     @helicity.setter
@@ -416,21 +399,13 @@ class HdfEventWriter(base.EventWriterBase):
         )
 
 
-class HdfProcessWriter(base.ProcessWriterBase):
+class HdfProcessWriter:
     """Context manager interface to create and write processes.
 
     :group: hepwrite
 
     Attributes (write-only)
     -----------------------
-    process_string : str
-        String representing the hard process (eg. MadGraph format).
-    signal_pdgs : numpy.ndarray[int]
-        PDG codes within the hard process considered as "signal".
-    com_energy : tuple[float, str]
-        A tuple whose first element is the centre-of-mass collision
-        energy for the hard process, and the second element is the unit
-        that this energy is given in.
     custom_meta : MapWriter
         Write-only dictionary-like interface to set custom metadata to
         the process.
@@ -453,7 +428,7 @@ class HdfProcessWriter(base.ProcessWriterBase):
 
     """
 
-    def __init__(self, file_obj: HdfWriter, key: str) -> None:
+    def __init__(self, file_obj: "HdfWriter", key: str) -> None:
         self._file_obj = file_obj
         self.key = key
         self._evt_idx = 0
@@ -469,7 +444,7 @@ class HdfProcessWriter(base.ProcessWriterBase):
                 yield grp
             chunk = chunk + 1
 
-    def __enter__(self: HdfProcessWriter) -> HdfProcessWriter:
+    def __enter__(self: "HdfProcessWriter") -> "HdfProcessWriter":
         self._parent = self._file_obj._buffer.create_group(self.key)
         self._events = self._evtgrp_iter()
         self.custom_meta = MapWriter(self, _meta_setter)
@@ -480,96 +455,36 @@ class HdfProcessWriter(base.ProcessWriterBase):
         self._grp.attrs["custom_meta_keys"] = self.custom_meta._flush()
         self._parent.attrs["num_evts"] = self._evt_idx
 
-    @deprecated
-    def set_string(self, proc_str: str) -> None:
-        """Writes the string formatted underlying event to the
-        process metadata.
-
-        :group: hepwrite
-
-        Parameters
-        ----------
-        proc_str : str
-            MadGraph formatted string representing the hard event,
-            eg. p p > t t~
-        """
-        self.process_string = proc_str
-
     @property
-    def process_string(self) -> str:
+    def process_string(self) -> ty.NoReturn:
+        """String representing the hard process (eg. MadGraph format)."""
         raise WriteOnlyError(_WRITE_ONLY_MSG)
 
     @process_string.setter
     def process_string(self, value: str) -> None:
         self._grp.attrs["process"] = value
 
-    @deprecated
-    def set_decay(self, in_pcls: ty.Sequence[int], out_pcls: ty.Sequence[int]) -> None:
-        """Writes the pdgids of incoming and outgoing particles to
-        process metadata.
-
-        :group: hepwrite
-
-        Parameters
-        ----------
-        in_pcls : tuple[int, ...]
-            pdgids of incoming particles.
-            eg. for p p => (2212, 2212)
-        out_pcls : tuple[int, ...]
-            pdgids of outgoing particles.
-            eg. for t t~ => (6, -6)
-        """
-        self._grp.attrs["in_pcls"] = in_pcls
-        self._grp.attrs["out_pcls"] = out_pcls
-
     @property
-    def signal_pdgs(self) -> base.IntVector:
+    def signal_pdgs(self) -> ty.NoReturn:
+        """PDG codes within the hard process considered as 'signal'."""
         raise WriteOnlyError(_WRITE_ONLY_MSG)
 
     @signal_pdgs.setter
     def signal_pdgs(self, value: ty.Sequence[int]) -> None:
         self._grp.attrs["signal_pdgs"] = value
 
-    @deprecated
-    def set_com_energy(self, energy: float, unit: str) -> None:
-        """Writes the CoM energy and unit for the collision to
-        process metadata.
-
-        :group: hepwrite
-
-        Parameters
-        ----------
-        energy : float
-            eg. 13.0
-        out_pcls : str
-            eg. 'GeV'
-        """
-        self._grp.attrs["com_e"] = energy
-        self._grp.attrs["e_unit"] = unit
-
     @property
-    def com_energy(self) -> tuple[float, str]:
+    def com_energy(self) -> ty.NoReturn:
+        """A tuple whose first element is the centre-of-mass collision
+        energy for the hard process, and the second element is the unit
+        that this energy is given in.
+        """
         raise WriteOnlyError(_WRITE_ONLY_MSG)
 
     @com_energy.setter
-    def com_energy(self, value: tuple[float, str]) -> None:
+    def com_energy(self, value: ty.Tuple[float, str]) -> None:
         self._grp.attrs["com_e"] = value[0]
         self._grp.attrs["e_unit"] = value[1]
-
-    @deprecated
-    def set_custom_meta(self, name: str, metadata: ty.Any) -> None:
-        """Store custom metadata to the process.
-
-        :group: hepwrite
-
-        Parameters
-        ----------
-        name : str
-            Handle to access the metadata at read time.
-        metadata : str, int, float, or iterables thereof
-            The data you wish to store.
-        """
-        self._grp.attrs[name] = metadata
 
     def new_event(self) -> HdfEventWriter:
         self._grp = next(self._events)
@@ -577,7 +492,7 @@ class HdfProcessWriter(base.ProcessWriterBase):
 
     def event_iter(
         self, iterable: ty.Iterable[IterItem]
-    ) -> ty.Iterator[tuple[HdfEventWriter, IterItem]]:
+    ) -> ty.Iterator[ty.Tuple[HdfEventWriter, IterItem]]:
         """Wraps an iteratable object, returning a new iterator which
         yields a new writeable event object followed by the value
         obtained from the passed iterator.
@@ -601,7 +516,7 @@ class HdfProcessWriter(base.ProcessWriterBase):
                 yield event, value
 
 
-class HdfWriter(base.WriterBase):
+class HdfWriter:
     """Create a new heparchy hdf5 file object with write access.
 
     :group: hepwrite
@@ -634,9 +549,9 @@ class HdfWriter(base.WriterBase):
 
     def __init__(
         self,
-        path: Path | str,
-        compression: str | Compression = Compression.GZIP,
-        compression_level: int | None = 4,
+        path: ty.Union[Path, str],
+        compression: ty.Union[str, Compression] = Compression.GZIP,
+        compression_level: ty.Optional[int] = 4,
         evts_per_chunk: int = 1000,
     ) -> None:
         self.path = Path(path)
@@ -649,7 +564,7 @@ class HdfWriter(base.WriterBase):
         self._cmprs_lvl = compression_level
         self._evts_per_chunk = evts_per_chunk
 
-    def __enter__(self: HdfWriter) -> HdfWriter:
+    def __enter__(self: "HdfWriter") -> "HdfWriter":
         self._buffer = h5py.File(self.path, "w", libver="latest")
         return self
 
