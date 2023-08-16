@@ -29,5 +29,5 @@ defineConstant = { DEBUG = true }
 stubPath = "heparchy/stubs"
 reportMissingImports = true
 reportMissingTypeStubs = false
-pythonVersion = "3.9"
+pythonVersion = "3.8"
 pythonPlatform = "Linux"
