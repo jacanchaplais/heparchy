@@ -440,7 +440,7 @@ class HdfProcessWriter:
         chunk = 0
         while True:
             grp = self._parent.create_group(chunk_key_format(chunk))
-            for i in range(self._file_obj._evts_per_chunk):
+            for _ in range(self._file_obj._evts_per_chunk):
                 yield grp
             chunk = chunk + 1
 
