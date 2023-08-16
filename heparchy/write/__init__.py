@@ -1,9 +1,17 @@
-"""Interfaces to write to standard particle physics formats,
+"""
+`heparchy.write`
+================
+
+Interfaces to write to standard particle physics formats,
 and the heparchy formats.
 
 Notes
 -----
 Currently only implemented for hdf5.
 """
+from . import hdf
+from .hdf import *
 
-from .hdf import HdfWriter
+
+__all__ = []
+__all__.extend(hdf.__all__)
