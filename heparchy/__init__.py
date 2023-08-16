@@ -96,7 +96,3 @@ def open_file(
         yield f
     finally:
         stack.close()
-
-
-with open_file("/scratch/jlc1n20/graftnet/data/h_bb.hdf5", "w", "test") as f:
-    f
