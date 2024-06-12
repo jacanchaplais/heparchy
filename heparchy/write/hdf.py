@@ -5,7 +5,6 @@
 Provides the interface to write HEP data to the heparchy HDF5 format.
 """
 import functools as fn
-import itertools as it
 import typing as ty
 import warnings
 from enum import Enum
@@ -290,12 +289,10 @@ class HdfEventWriter:
 
     @edges.setter
     def edges(self, data: base.VoidVector) -> None:
-        self._mk_dset(
-            name="edges",
-            data=data,
-            shape=data.shape,
-            dtype=np.dtype([("src", "<i4"), ("dst", "<i4")]),
-        )
+        dtype = np.dtype([("src", "<i4"), ("dst", "<i4")])
+        if not data.dtype.names:
+            data = data.view(dtype).reshape(-1)
+        self._mk_dset(name="edges", data=data, shape=data.shape, dtype=dtype)
         self._num_edges = len(data)
 
     @property
@@ -328,13 +325,11 @@ class HdfEventWriter:
 
     @pmu.setter
     def pmu(self, data: base.VoidVector) -> None:
+        dtype = np.dtype([(name, "<f8") for name in "xyze"])
+        if not data.dtype.names:
+            data = data.view(dtype).reshape(-1)
         self._set_num_pcls(data)
-        self._mk_dset(
-            name="pmu",
-            data=data,
-            shape=data.shape,
-            dtype=np.dtype(list(zip("xyze", it.repeat("<f8")))),
-        )
+        self._mk_dset(name="pmu", data=data, shape=data.shape, dtype=dtype)
 
     @property
     def color(self) -> ty.NoReturn:
@@ -343,13 +338,11 @@ class HdfEventWriter:
 
     @color.setter
     def color(self, data: base.AnyVector) -> None:
+        dtype = np.dtype([("color", "<i4"), ("anticolor", "<i4")])
+        if not data.dtype.names:
+            data = data.view(dtype).reshape(-1)
         self._set_num_pcls(data)
-        self._mk_dset(
-            name="color",
-            data=data,
-            shape=data.shape,
-            dtype=np.dtype([("color", "<i4"), ("anticolor", "<i4")]),
-        )
+        self._mk_dset(name="color", data=data, shape=data.shape, dtype=dtype)
 
     @property
     def pdg(self) -> ty.NoReturn:
