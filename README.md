@@ -1,4 +1,7 @@
 # heparchy
+
+[![DOI](https://zenodo.org/badge/411699933.svg)](https://doi.org/10.5281/zenodo.15753768)
+
 Hierarchical database storage and access for high energy physics event data.
 
 Docstrings are available, markdown documentation coming soon.
